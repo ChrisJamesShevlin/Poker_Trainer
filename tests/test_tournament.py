@@ -5,7 +5,7 @@ import pytest
 
 from pokercalc import stakes
 from pokercalc.game import Hand
-from pokercalc.table import BLIND_LEVELS, HANDS_PER_LEVEL, START_CHIPS, Table
+from pokercalc.table import Table
 
 
 def cash(**kw):
@@ -123,12 +123,13 @@ def test_a_tournament_is_a_field_of_36_on_six_tables_with_equal_chips_and_rising
     t = tourney()
     f = t.tourney["field"]
     assert f["size"] == 36 and len(f["tables"]) == 6 and all(len(tb) == 6 for tb in f["tables"]) and f["hero_table"] == 0
-    assert all(p["stack"] == START_CHIPS for p in f["players"].values())
+    sc = t.tourney["start_chips"]
+    assert all(p["stack"] == sc for p in f["players"].values())
     assert len({p["persona"]["name"] for p in f["players"].values() if not p.get("hero")}) == 35          # nobody shares a name
     st = t.state()["tourney"]
-    assert st["blinds"] == list(BLIND_LEVELS[0]) and st["left"] == 36 and st["paid"] == 5 and st["tables"] == 6 and st["table_no"] == 1
+    assert st["blinds"] == t.tourney["levels"][0][:2] and st["left"] == 36 and st["paid"] == 5 and st["tables"] == 6 and st["table_no"] == 1
     assert sum(st["prizes"]) == st["prize_pool"] == 36 * st["buy_in"] and st["prizes"] == sorted(st["prizes"], reverse=True)
-    assert all(b["stack"] == START_CHIPS and not b.get("empty") for b in t.bots) and len(t.bots) == 5
+    assert all(b["stack"] == sc and not b.get("empty") for b in t.bots) and len(t.bots) == 5
 
 
 def test_every_table_plays_each_round_and_the_chips_always_add_up():
@@ -141,7 +142,7 @@ def test_every_table_plays_each_round_and_the_chips_always_add_up():
         while not t.hand.over:
             L = t.hand.legal(0)
             t.hero_act("check" if L["can_check"] else "call" if L["to_call"] <= 3 * t.bb else "fold")
-        assert sum(p["stack"] for p in f["players"].values()) == 36 * START_CHIPS                         # nothing is ever created or lost
+        assert sum(p["stack"] for p in f["players"].values()) == 36 * t.tourney["start_chips"]       # nothing is ever created or lost (antes included)
         assert all(p["stack"] == 0 for p in f["players"].values() if p["place"] is not None)
     assert f["left"] < 36                                                                                  # the other tables really are playing
 
@@ -168,7 +169,7 @@ def test_players_go_out_in_order_with_unique_places_and_tables_are_broken_and_ba
 
 def test_tables_are_kept_within_one_player_and_broken_when_not_needed_and_the_final_table_is_one_table():
     rng = random.Random(1)
-    f = mtt.new_field("0.02/0.05", "balanced", rng, 36, START_CHIPS)
+    f = mtt.new_field("0.02/0.05", "balanced", rng, 36, 3000)
     order = list(range(1, 36))
     rng.shuffle(order)
     for left in (30, 25, 19, 13, 7, 6, 3):
@@ -252,3 +253,74 @@ def test_a_tournament_is_saved_and_restored_with_its_field_and_seats():
     back.start_hand()                                                                                       # and it plays on
     plain = cash()
     assert plain.tourney is None and plain.state().get("chip_mode") is False
+
+
+def test_antes_are_dead_money_nobody_has_to_call():
+    from pokercalc.game import Hand
+    h = Hand([1000] * 6, button=0, sb=5, bb=10, ante=2, seed=1)
+    assert h.pot() == 6 * 2 + 15 and h.current_bet == 10 and h.legal(h.to_act)["to_call"] == 10      # antes are in the pot, not in the bet
+    assert sum(h.stack) + h.pot() == 6000
+    short = Hand([1000, 1000, 1, 1000, 1000, 1000], button=0, sb=5, bb=10, ante=2, seed=1)
+    assert short.allin[2] and short.stack[2] == 0 and short.total[2] == 1                             # a 1-chip stack posts what it has
+    while not short.over:
+        short.act(short.to_act, "check" if short.legal(short.to_act)["can_check"] else "call")
+    assert sum(short.result["net"]) == 0
+
+
+def test_every_stake_has_its_own_structure_that_gets_deeper_and_gains_antes_earlier():
+    keys = list(stakes.STAKES)
+    structs = [mtt.structure(k) for k in keys]
+    assert structs[0]["start_chips"] == 3000 and structs[1]["start_chips"] == 3000                    # the two lowest entries: 3,000 chips
+    chips = [s["start_chips"] for s in structs]
+    assert chips == sorted(chips) and chips[-1] > chips[0]                                           # more chips as the stakes rise
+    depth = [s["start_chips"] / s["levels"][0][1] for s in structs]
+    assert depth[0] == 100 and depth[-1] >= 150 and all(d >= 100 for d in depth)                      # deeper stacks at the top
+    assert structs[0]["ante_from"] > structs[-1]["ante_from"]                                         # antes come in earlier at the top
+    for s in structs:
+        bbs = [lv[1] for lv in s["levels"]]
+        assert bbs == sorted(set(bbs)) and all(lv[0] * 2 == lv[1] for lv in s["levels"])             # every level is bigger, small blind = half
+        assert [lv[2] > 0 for lv in s["levels"]] == [i + 1 >= s["ante_from"] for i in range(len(bbs))]
+    assert [tuple(x) for x in structs[0]["levels"][:2]] == [(15, 30, 0), (25, 50, 0)]
+
+
+def test_a_tournament_uses_the_stakes_structure_and_antes_start_on_time():
+    t = Table("0.50/1", seed=3, bot_sims=8)
+    t.start_tournament("0.50/1")
+    s = mtt.structure("0.50/1")
+    assert t.hero_stack == s["start_chips"] == 10000 and t.state()["tourney"]["blinds"] == [50, 100] and t.state()["tourney"]["ante"] == 0
+    for _ in range(s["ante_from"] * s["hands_per_level"] + 2):
+        if t.tourney["finished"]:
+            break
+        t.start_hand()
+        while not t.hand.over:
+            L = t.hand.legal(0)
+            t.hero_act("check" if L["can_check"] else "fold")
+    if not t.tourney["finished"]:
+        assert t.state()["tourney"]["ante"] > 0 and t.hand.ante == t.ante > 0                         # the ante is in play from its level
+
+
+def test_a_tournament_saved_before_structures_varied_still_loads():
+    t = Table("0.50/1", seed=3, bot_sims=8)
+    t.start_tournament("0.50/1")
+    d = t.to_dict()
+    for k in ("levels", "hands_per_level", "start_chips", "ante_from"):
+        d["tourney"].pop(k)
+    back = Table.from_dict(d, seed=1, bot_sims=8)
+    assert back.tourney["hands_per_level"] == 12 and back.tourney["levels"][0] == [15, 30, 0]
+    back.start_hand()
+
+
+def test_chips_still_add_up_with_antes_at_a_high_stake():
+    t = Table(seed=5, bot_sims=8)                                      # (sits at the first level; the tournament picks its own stake)
+    t.start_tournament("5/10")
+    f = t.tourney["field"]
+    total = 36 * t.tourney["start_chips"]
+    for _ in range(80):
+        if t.tourney["finished"]:
+            break
+        t.start_hand()
+        while not t.hand.over:
+            L = t.hand.legal(0)
+            t.hero_act("check" if L["can_check"] else "call" if L["to_call"] <= 3 * t.bb else "fold")
+        assert sum(p["stack"] for p in f["players"].values()) == total
+    assert t.tourney["level"] >= 3 and any(lv[2] for lv in t.tourney["levels"][:t.tourney["level"] + 1])        # it got to the antes

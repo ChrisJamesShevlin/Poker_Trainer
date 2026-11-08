@@ -41,7 +41,7 @@ class IllegalAction(ValueError):
 
 
 class Hand:
-    def __init__(self, stacks, button=0, sb=1, bb=2, seed=None, holes=None, board=None, out=()):
+    def __init__(self, stacks, button=0, sb=1, bb=2, seed=None, holes=None, board=None, out=(), ante=0):
         n = len(stacks)
         if n < 3:
             raise ValueError("need at least 3 seats")
@@ -49,6 +49,7 @@ class Hand:
         if n - len(self.out) < 2:
             raise ValueError("need at least 2 players with chips")
         self.n, self.sb, self.bb, self.button = n, sb, bb, button
+        self.ante = ante                       # a tournament ante: every player still in puts this in before the blinds (it is not part of any bet)
         if holes is None:
             deck = FULL_DECK[:]
             random.Random(seed).shuffle(deck)
@@ -82,6 +83,10 @@ class Hand:
             sbs = self._seat_after(button)
             bbs = self._seat_after(sbs)
         self.sb_seat, self.bb_seat = sbs, bbs
+        if ante:
+            for s in range(n):
+                if s not in self.out:
+                    self._ante(s, ante)
         self._post(sbs, sb)
         self._post(bbs, bb)
         self.current_bet = bb
@@ -111,6 +116,14 @@ class Hand:
     def active(self):
         """Seats still in the hand."""
         return [s for s in range(self.n) if not self.folded[s]]
+
+    def _ante(self, seat, amount):
+        """Dead money: it goes in the pot but does not count towards what you have bet this street, so nobody has to call it."""
+        amt = min(amount, self.stack[seat])
+        self.stack[seat] -= amt
+        self.total[seat] += amt
+        if self.stack[seat] == 0:
+            self.allin[seat] = True
 
     def _post(self, seat, amount):
         amt = min(amount, self.stack[seat])

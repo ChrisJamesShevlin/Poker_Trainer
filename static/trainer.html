@@ -467,7 +467,7 @@ function renderStats(){
   $('stats').innerHTML=`<div><b>${S.hand_no}</b><span>Hands</span></div><div><b class="${net>0?'pos':net<0?'neg':''}">${net>0?'+':net<0?'-':''}${fmt(Math.abs(net))}</b><span>Session ${(net/S.bb).toFixed(1)}bb</span></div><div><b>${fmt(S.hero_stack)}</b><span>Your stack</span></div>`;
   $('acctStat').innerHTML=S.chip_mode?`Account <b>${money(S.grind_account)}</b> (shared with cash)`:`Account <b>${fmt(S.account)}</b> &middot; ${fmt(S.bankroll)} off the table &middot; ${S.account_buy_ins} buy-ins`;
   const st=CFG.stakes.find(x=>x.key===S.stake);
-  $('pill').textContent=S.tourney?`Tournament · blinds ${S.tourney.blinds[0]}/${S.tourney.blinds[1]} · ${S.tourney.left} left`:`${st.blinds} ${GAME} · 6-max · ${st.tier_name}${S.mode==='practice'?' · Practice':''}`;
+  $('pill').textContent=S.tourney?`Tournament · blinds ${S.tourney.blinds[0]}/${S.tourney.blinds[1]}${S.tourney.ante?' ante '+S.tourney.ante:''} · ${S.tourney.left} left`:`${st.blinds} ${GAME} · 6-max · ${st.tier_name}${S.mode==='practice'?' · Practice':''}`;
 }
 function renderLobby(){
   if(!CFG||!S)return;
@@ -486,7 +486,7 @@ function renderLobby(){
   CFG.currencies.forEach(sym=>{const b=document.createElement('button');b.textContent=sym;b.className=S.currency===sym?'on':'';b.disabled=lock;
     b.onclick=()=>run(async()=>{await applyResponse(await api('/api/trainer/settings',{currency:sym}));CFG=await api('/api/trainer/config');render()});cs.appendChild(b)});
   const tour=S.mode==='tournament';
-  document.querySelector('table.lobby thead tr').innerHTML=tour?'<th>Level</th><th>Entry</th><th>Prize pool</th><th>Players</th>':'<th>Stakes</th><th>Buy-in</th><th>Players</th><th>Table</th>';
+  document.querySelector('table.lobby thead tr').innerHTML=tour?'<th>Level</th><th>Entry</th><th>Prize pool</th><th>Structure</th>':'<th>Stakes</th><th>Buy-in</th><th>Players</th><th>Table</th>';
   $('buyLbl').closest('.field').style.display=tour?'none':'';$('stackIn').closest('.field').style.display=tour?'none':'';
   if(tour){$('acctHdr').textContent='Your account (shared with cash)';$('acctLine').innerHTML=`<b>${money(S.grind_account)}</b> in your account. The entry comes out of it and the prize goes back in.`}
   const tb=$('lobby');tb.innerHTML='';
@@ -494,7 +494,7 @@ function renderLobby(){
     const afford=S.account>=s.buy_in_min;
     const tr=document.createElement('tr');tr.className='lrow'+(sel.stake===s.key?' sel':'')+(afford&&!s.locked?'':' dis');
     if(s.locked)tr.title=s.lock_text;else if(!afford)tr.title='Not enough in your account for the minimum buy-in';
-    tr.innerHTML=tour?`<td>${s.locked?'🔒 ':''}<b>${s.blinds}</b></td><td>${s.entry}</td><td>${s.prize_pool}</td><td>36 &middot; 6 tables</td>`
+    tr.innerHTML=tour?`<td>${s.locked?'🔒 ':''}<b>${s.blinds}</b></td><td>${s.entry}</td><td>${s.prize_pool}</td><td>${s.structure}</td>`
       :`<td>${s.locked?'🔒 ':''}<b>${s.blinds}</b>${S.stake===s.key?' <span class="dim">(seated)</span>':''}</td><td>${s.buy_in}</td><td><span class="tier ${s.tier}">${s.tier_name}</span></td><td>6-max</td>`;
     tr.onclick=()=>{if(lock)return toast('Finish the hand first');if(s.locked)return toast(s.lock_text);if(!afford)return toast('Not enough in your account for the minimum buy-in at '+s.blinds+'. Add to your account or pick a lower stake.');
       sel.stake=s.key;sel.buy_in=Math.min(s.buy_in_max,S.account);renderLobby()};
@@ -525,7 +525,7 @@ function renderLobby(){
 function renderNews(){
   const el=$('news');el.innerHTML='';
   (S&&S.news||[]).forEach(n=>{
-    const t=n.kind==='rebuy'?`${n.name} topped up`:n.kind==='swap'?`${n.name} left the table and ${n.new} sat down`:n.kind==='level'?`Blinds go up to ${n.blinds[0]}/${n.blinds[1]}`
+    const t=n.kind==='rebuy'?`${n.name} topped up`:n.kind==='swap'?`${n.name} left the table and ${n.new} sat down`:n.kind==='level'?`Blinds go up to ${n.blinds[0]}/${n.blinds[1]}${n.ante?' with an ante of '+n.ante:''}`
       :n.kind==='moved'?`Your table was broken: you move to table ${n.table}`:n.kind==='joined'?`${n.name} joined your table`:n.kind==='left'?`${n.name} moved to another table`:'';
     if(t){const d=document.createElement('div');d.textContent='🔄 '+t;d.className='dim';el.appendChild(d)}
   });
@@ -535,7 +535,7 @@ function renderTourney(){
   if(!T){el.style.display='none';return}
   el.style.display='block';
   const tag=T.finished?'':T.bubble?' &middot; <b style="color:#fca5a5">BUBBLE</b>':T.in_the_money?' &middot; <b style="color:#86efac">IN THE MONEY</b>':T.final_table?' &middot; <b>FINAL TABLE</b>':'';
-  let h=`<div class="card" style="margin-bottom:12px;padding:10px 14px"><div style="font-size:13.5px"><b>Level ${T.level}</b> of ${T.levels} &middot; blinds <b>${T.blinds[0]}/${T.blinds[1]}</b>`
+  let h=`<div class="card" style="margin-bottom:12px;padding:10px 14px"><div style="font-size:13.5px"><b>Level ${T.level}</b> of ${T.levels} &middot; blinds <b>${T.blinds[0]}/${T.blinds[1]}${T.ante?' ante '+T.ante:''}</b>`
     +(T.next_level_in!=null&&!T.finished?` &middot; next level in ${T.next_level_in} hands`:'')+`</div><div style="font-size:13.5px"><b>${T.finished?'':T.left+' of '}${T.size}</b> ${T.finished?'players':'left'} &middot; ${T.paid} paid &middot; table ${T.table_no} of ${T.tables}${tag}</div>`;
   if(!T.finished)h+=`<div class="dim" style="font-size:12.5px">Your chips ${fmt(S.hero_stack)} &middot; ${T.chip_rank?ord(T.chip_rank)+' in chips &middot; ':''}average ${fmt(T.avg_stack)} &middot; ${T.knockouts} knockout${T.knockouts==1?'':'s'}${T.elsewhere?` &middot; ${T.elsewhere} out at other tables`:''}</div>`;
   else{const r=T.result;h+=`<div style="margin-top:6px;font-size:15px"><b>You finished ${ord(r.place)} of ${r.size}</b>${r.prize?` &middot; prize <b>${money(r.prize)}</b> (entry ${money(r.buy_in)})`:` &middot; no prize (entry ${money(r.buy_in)})`}</div>

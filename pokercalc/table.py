@@ -28,7 +28,7 @@ LEAVE_AHEAD_P = 0.04            # a player sitting on a big win sometimes cashes
 AHEAD_MULT = 1.8
 LEAVE_RANDOM_P = 0.004          # and now and then anyone just gets up (per hand)
 # Tournaments (multi-table, see mtt.py): everyone starts with the same chips, the blinds go up on a clock, tables are balanced and broken.
-START_CHIPS = 3000
+START_CHIPS = 3000                  # (the old fixed structure: still used for a tournament saved before structures varied by stake)
 BLIND_LEVELS = [(15, 30), (25, 50), (50, 100), (75, 150), (100, 200), (150, 300), (200, 400), (300, 600), (400, 800), (600, 1200), (1000, 2000), (1500, 3000)]
 HANDS_PER_LEVEL = 12
 ONLINE_PREFLOP_S, ONLINE_POSTFLOP_S = 10, 15         # the standard online shot clock: 10 seconds preflop, 15 on each street after the flop
@@ -55,6 +55,7 @@ class Table:
         self.deadline = None
         self.last = None                    # result summary of the hand just finished
         self.rebought = []                  # seats of bots that rebought at the start of this hand
+        self.ante = 0                       # the ante per player (tournaments only)
         self.news = []                      # who topped up, left or sat down at the start of this hand
         self.tourney = None                 # the tournament in progress (or just finished), if this table is playing one
         self.reloads = 0                    # how many times you went bust and were given a fresh starter balance
@@ -236,7 +237,7 @@ class Table:
         self.hand_no += 1
         seed = self.rng.randrange(1 << 30) if seed is None else seed
         stacks = [self.hero_stack] + [b["stack"] for b in self.bots]
-        self.hand = Hand(stacks, button=self.button, sb=self.sb, bb=self.bb, seed=seed, out=out)
+        self.hand = Hand(stacks, button=self.button, sb=self.sb, bb=self.bb, seed=seed, out=out, ante=self.ante)
         self.last = None
         self._keys = {0: "hero", **{i + 1: b["persona"]["name"] for i, b in enumerate(self.bots) if not b.get("empty")}}   # a stable name for each seat
         self._bots = [Bot(b["style"], seed=seed * 7 + i, sims=self.bot_sims, loose_mult=b["loose_mult"], traits=b.get("traits"),
@@ -286,19 +287,21 @@ class Table:
         fee = stakes.buy_in_range(stake)[1] if fee is None else int(fee)
         self.stake = stake
         self.tier = stakes.STAKES[stake]["tier"]
-        f = mtt.new_field(stake, self.strength, self.rng, size, START_CHIPS)
+        sc = mtt.structure(stake)                                   # starting chips, blind levels, antes: they depend on the stake
+        f = mtt.new_field(stake, self.strength, self.rng, size, sc["start_chips"])
         ids = mtt.hero_table_ids(f)
         seats = ids + [None] * (5 - len(ids))
         self.rng.shuffle(seats)
         self.revealed = False
-        self.hero_stack, self.bankroll, self.buy_in = START_CHIPS, 0, START_CHIPS
-        self.sb, self.bb = BLIND_LEVELS[0]
+        self.hero_stack, self.bankroll, self.buy_in = sc["start_chips"], 0, sc["start_chips"]
+        self.sb, self.bb, self.ante = sc["levels"][0]
         self.button = self.rng.randrange(6)
         self.hand, self.last, self.hand_no, self.hero_net = None, None, 0, 0
         self.tourney = {"stake": stake, "level": 0, "hands_in_level": 0, "hands": 0, "knockouts": 0, "finished": False, "hero_place": None,
                         "buy_in": fee, "size": size, "paid": mtt.paid_places(size), "prizes": mtt.prize_list(size * fee, size),
                         "field": f, "hero_seats": seats, "busted_now": [], "pending": False, "final_table": False, "heads_up": False,
-                        "table_moves": 0, "min_bb": START_CHIPS / BLIND_LEVELS[0][1], "elsewhere": 0}
+                        "table_moves": 0, "min_bb": sc["start_chips"] / sc["levels"][0][1], "elsewhere": 0,
+                        "levels": sc["levels"], "hands_per_level": sc["hands_per_level"], "start_chips": sc["start_chips"], "ante_from": sc["ante_from"]}
         self._seat_bots()
 
     def _start_tourney_hand(self, seed):
@@ -309,11 +312,11 @@ class Table:
         if t["pending"]:
             self._rebalance_and_reseat()
             t["pending"] = False
-        if t["hands_in_level"] >= HANDS_PER_LEVEL and t["level"] < len(BLIND_LEVELS) - 1:
+        if t["hands_in_level"] >= t["hands_per_level"] and t["level"] < len(t["levels"]) - 1:
             t["level"] += 1
             t["hands_in_level"] = 0
-            self.news.append({"kind": "level", "blinds": list(BLIND_LEVELS[t["level"]])})
-        self.sb, self.bb = BLIND_LEVELS[t["level"]]
+            self.news.append({"kind": "level", "blinds": list(t["levels"][t["level"]][:2]), "ante": t["levels"][t["level"]][2]})
+        self.sb, self.bb, self.ante = t["levels"][t["level"]]
         out = {i + 1 for i, b in enumerate(self.bots) if b["stack"] <= 0}
         while self.button in out:
             self.button = (self.button + 1) % 6
@@ -361,7 +364,7 @@ class Table:
         winners = set(h.result["winners"])
         knocked = {s for s in here if s != 0 and 0 in winners and not h.folded[s]}
         busted = [(pid_of(s), h.start_stack[s]) for s in here]
-        elsewhere = mtt.play_other_tables(f, self.rng, self.sb, self.bb)
+        elsewhere = mtt.play_other_tables(f, self.rng, self.sb, self.bb, self.ante)
         busted += elsewhere
         mtt.assign_places(f, busted)
         t["knockouts"] += len(knocked)
@@ -400,9 +403,10 @@ class Table:
         alive = sorted((p["stack"] for p in f["players"].values() if p["place"] is None), reverse=True)
         mine = f["players"]["0"]["stack"]
         left = f["left"]
-        return {"stake": t["stake"], "level": t["level"] + 1, "levels": len(BLIND_LEVELS), "blinds": list(BLIND_LEVELS[t["level"]]),
-                "hands_in_level": t["hands_in_level"], "hands_per_level": HANDS_PER_LEVEL,
-                "next_level_in": None if t["level"] >= len(BLIND_LEVELS) - 1 else HANDS_PER_LEVEL - t["hands_in_level"],
+        return {"stake": t["stake"], "level": t["level"] + 1, "levels": len(t["levels"]), "blinds": list(t["levels"][t["level"]][:2]), "ante": t["levels"][t["level"]][2],
+                "start_chips": t["start_chips"], "ante_from": t["ante_from"],
+                "hands_in_level": t["hands_in_level"], "hands_per_level": t["hands_per_level"],
+                "next_level_in": None if t["level"] >= len(t["levels"]) - 1 else t["hands_per_level"] - t["hands_in_level"],
                 "size": t["size"], "left": left, "paid": t["paid"], "bubble": (not t["finished"]) and left == t["paid"] + 1,
                 "in_the_money": (not t["finished"]) and left <= t["paid"], "final_table": t["final_table"], "heads_up": t["heads_up"],
                 "tables": len(f["tables"]), "table_no": f["hero_table"] + 1, "finished": t["finished"], "hero_place": t["hero_place"],
@@ -546,7 +550,7 @@ class Table:
 
     def _summary(self):
         total = self.bankroll + self.hero_stack
-        return {"stake": self.stake, "sb": self.sb, "bb": self.bb, "tier": self.tier, "buy_in": self.buy_in,
+        return {"stake": self.stake, "sb": self.sb, "bb": self.bb, "ante": self.ante, "tier": self.tier, "buy_in": self.buy_in,
                 "hero_stack": self.hero_stack, "hero_net": self.hero_net, "hand_no": self.hand_no,
                 "bankroll": self.bankroll, "account": total, "reloads": self.reloads, "currency": self.currency, "speed": self.speed,
                 "account_buy_ins": round(total / self.buy_in, 1) if self.buy_in else None,
@@ -576,7 +580,9 @@ class Table:
         t.tourney = d.get("tourney")
         if t.tourney is not None:                                  # a tournament: its blinds come from its level
             t.buy_in = d["buy_in"]
-            t.sb, t.bb = BLIND_LEVELS[t.tourney["level"]]
+            if "levels" not in t.tourney:                          # a tournament saved before structures varied by stake
+                t.tourney.update(levels=[list(x) + [0] for x in BLIND_LEVELS], hands_per_level=HANDS_PER_LEVEL, start_chips=START_CHIPS, ante_from=99)
+            t.sb, t.bb, t.ante = t.tourney["levels"][t.tourney["level"]]
         t.hero_stack, t.bankroll = d["hero_stack"], bankroll             # (built with a huge account so any saved state loads)
         t.hero_net, t.hand_no, t.button = d["hero_net"], d["hand_no"], d["button"]
         t.bots = [dict(b) for b in d["bots"]]

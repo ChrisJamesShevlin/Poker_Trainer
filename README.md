@@ -65,8 +65,9 @@ RTA can stay open in one browser window and the Casino in another.
   sometimes cashes out, and now and then anyone gets up. The table news says who.
 - Three modes: **Grinding** (levels, account and settings work like online), **Practice** (any settings, its own account, never
   counts towards Grinding) and **Tournament**.
-- **Tournament**: a multi-table tournament of 36 players on six 6-max tables. Everyone starts with 100 big blinds and the blinds
-  rise on a clock. Every table plays at once (the other tables are played by the bots), players who bust are out with their
+- **Tournament**: a multi-table tournament of 36 players on six 6-max tables. Everyone starts with the same chips and the blinds
+  rise every few hands. Each level has its own structure, like real online MTTs: the low entries start with 3,000 chips (100 big blinds)
+  and no antes until late, while the bigger ones start with up to 200 big blinds, play slower levels and add antes earlier. Every table plays at once (the other tables are played by the bots), players who bust are out with their
   finishing place, tables are kept balanced and broken as players go out (so your opponents change, and your own table can be
   broken), and the last six play the final table. The top five are paid, top-heavy. The entry fee comes out of the same account
   as cash and the prize goes back into it, and the levels are locked exactly like cash (cleared on the Grinding page, and 30

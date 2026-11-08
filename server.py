@@ -296,6 +296,9 @@ def trainer_config():
             fee = stakes.buy_in_range(r["key"])[1]
             r["entry"] = stakes.money(fee, cur)
             r["prize_pool"] = stakes.money(mtt.FIELD_SIZE * fee, cur)
+            sc = mtt.structure(r["key"])
+            r["structure"] = (f"{sc['start_chips']:,} chips ({sc['start_chips'] // sc['levels'][0][1]}bb) &middot; {sc['hands_per_level']} hands a level &middot; "
+                              f"antes from level {sc['ante_from']}")
     return jsonify(**casino_info(t), stakes=rows, timers=TIMER_CHOICES, currencies=list(stakes.CURRENCIES),
                    starter=stakes.starter_balance(), move_up_buy_ins=stakes.MOVE_UP_BUY_INS,
                    stay_buy_ins=stakes.STAY_BUY_INS, speeds=list(SPEEDS), default_account=DEFAULT_ACCOUNT, min_buy_in_bb=stakes.MIN_BUY_IN_BB,

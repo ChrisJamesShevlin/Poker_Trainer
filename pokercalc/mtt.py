@@ -27,6 +27,39 @@ _WEIGHTS = {1: [1.0], 2: [0.65, 0.35], 3: [0.50, 0.30, 0.20], 4: [0.45, 0.27, 0.
             6: [0.36, 0.23, 0.16, 0.11, 0.08, 0.06]}
 
 
+# How a tournament is built at each stake (hold'em's 15 levels; other ladders pick the nearest row): (starting chips, first big blind,
+# hands per level, first level with antes). Deeper stacks, slower levels and earlier antes as the stakes rise, like real online MTTs: the
+# low-entry ones start with 3,000 chips (100 big blinds) and the big ones with 200 big blinds. Our own picture, not copied from a site.
+_STRUCTURES = [(3000, 30, 10, 8), (3000, 30, 10, 8), (5000, 50, 10, 7), (5000, 50, 11, 7), (10000, 100, 12, 6), (10000, 100, 12, 6),
+               (15000, 100, 12, 5), (20000, 100, 13, 5), (20000, 100, 13, 4), (30000, 200, 14, 4), (30000, 200, 14, 4),
+               (40000, 200, 15, 3), (50000, 250, 15, 3), (50000, 250, 15, 3), (60000, 300, 15, 3)]
+_BLIND_STEPS = [1, 1.5, 2, 2.5, 3.5, 4.5, 6, 8, 10, 13, 17, 22, 30, 40, 55, 75]           # the big blind at each level, in first big blinds
+
+
+_NICE_BLINDS = sorted({a * 10 ** k for a in (20, 25, 30, 40, 50, 60, 80) for k in range(0, 4)} | {120 * 10 ** k for k in range(0, 3)}
+                      | {160 * 10 ** k for k in range(0, 3)} | {240 * 10 ** k for k in range(0, 3)})       # round, even big blinds
+_NICE_BLINDS = [b for b in _NICE_BLINDS if b <= 300000]
+
+
+def _next_blind(target, prev):
+    """The round big blind nearest to `target` that is above the previous level's."""
+    return min((b for b in _NICE_BLINDS if b > prev), key=lambda b: abs(math.log(b / target)))
+
+
+def structure(stake):
+    """The tournament at this stake: starting chips, blind levels [[small blind, big blind, ante], ...] and hands per level."""
+    keys = list(stakes.STAKES)
+    i = int(round(keys.index(stake) / (len(keys) - 1) * (len(_STRUCTURES) - 1)))
+    chips, first_bb, per, ante_from = _STRUCTURES[i]
+    levels, bb = [], 0
+    for n, step in enumerate(_BLIND_STEPS):
+        bb = first_bb if n == 0 else _next_blind(first_bb * step, bb)
+        ante = bb / 8.0
+        ante = int(round(ante / 5.0) * 5) if ante >= 10 else int(round(ante))
+        levels.append([bb // 2, bb, max(1, ante) if n + 1 >= ante_from else 0])
+    return {"start_chips": chips, "hands_per_level": per, "ante_from": ante_from, "levels": levels}
+
+
 def paid_places(size):
     return max(1, min(6, round(PAID_SHARE * size)))
 
@@ -70,7 +103,7 @@ def _stack(f, pid):
     return f["players"][str(pid)]["stack"]
 
 
-def play_other_tables(f, rng, sb, bb):
+def play_other_tables(f, rng, sb, bb, ante=0):
     """One hand at every table except yours. Returns [(player id, chips at the start of the hand)] for everyone who went out."""
     busted = []
     for ti, ids in enumerate(f["tables"]):
@@ -82,7 +115,7 @@ def play_other_tables(f, rng, sb, bb):
             button = (button + 1) % TABLE_SIZE
         stacks = [_stack(f, pid) for pid in ids] + [0] * len(out)
         start = list(stacks)
-        h = Hand(stacks, button=button, sb=sb, bb=bb, seed=rng.randrange(1 << 30), out=out)
+        h = Hand(stacks, button=button, sb=sb, bb=bb, seed=rng.randrange(1 << 30), out=out, ante=ante)
         bots = [Bot(f["players"][str(pid)]["style"], seed=rng.randrange(1 << 30), sims=BG_SIMS,
                     loose_mult=f["players"][str(pid)]["loose_mult"], traits=f["players"][str(pid)]["traits"]) for pid in ids]
         while not h.over:
