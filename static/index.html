@@ -204,7 +204,7 @@ dialog .field{margin-bottom:10px}
 const RANKS=['A','K','Q','J','T','9','8','7','6','5','4','3','2'];
 const SUITS=[['s','♠'],['h','♥'],['d','♦'],['c','♣']];
 const POS=['UTG','HJ','CO','BTN','SB','BB'];
-const SEATS={  // order the dealer button moves your seat each hand; extra full-ring seats map to the nearest chart position
+const SEATS={  // seats in the order they sit clockwise from the button (your seat moves the other way, one step back each hand); extra full-ring seats map to the nearest chart position
   2:['SB','BB'],3:['BTN','SB','BB'],4:['BTN','SB','BB','CO'],5:['BTN','SB','BB','UTG','CO'],
   6:['BTN','SB','BB','UTG','HJ','CO'],7:['BTN','SB','BB','UTG','UTG','HJ','CO'],
   8:['BTN','SB','BB','UTG','UTG','UTG','HJ','CO'],9:['BTN','SB','BB','UTG','UTG','UTG','HJ','HJ','CO']};
@@ -416,7 +416,7 @@ async function save(res){   // res = chips won (+) or lost (-) this hand
   try{notify((await hr.json()).notices)}catch(e){}
   if(res!=null&&startStack!==null){const ns=clean(startStack+res);$('stack').value=ns;store.set('stack',ns)}
   const order=SEATS[tableSize];
-  seatIdx=(seatIdx+1)%order.length; pos=norm(order[seatIdx],order); store.set('seat',seatIdx); store.set('pos',pos);   // the button moves on
+  seatIdx=(seatIdx-1+order.length)%order.length; pos=norm(order[seatIdx],order);      // the button moves left, so your seat goes BTN, CO, HJ, UTG, BB, SB, BTN ... store.set('seat',seatIdx); store.set('pos',pos);   // the button moves on
   clearHand(); toast('Saved - next seat: '+pos);
 }
 function clearHand(discard){
