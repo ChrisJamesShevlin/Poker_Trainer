@@ -421,7 +421,7 @@ function renderControls(){
   }
   const L=S.legal,T=S.for_tool;
   const tool=document.createElement('div');tool.className='tool';
-  tool.innerHTML=`<div class="t">For the RTA</div>Seat <b>${T.position}</b> &middot; Pot <b>${fmt(S.pot)}</b> &middot; Bet to call <b>${fmt(T.to_call)}</b> &middot; Opponents <b>${T.opponents}</b>${S.street==='preflop'&&T.in_hand!==T.opponents?` <span class="dim">(expected to see the flop; ${T.in_hand} still in the hand)</span>`:''}`
+  tool.innerHTML=`<div class="t">For the RTA</div>Seat <b>${T.position}</b> &middot; Pot <b>${fmt(S.pot)}</b> &middot; Bet to call <b>${fmt(T.to_call)}</b> <span class="dim">(what you add)</span> &middot; Opponents <b>${T.opponents}</b>${S.street==='preflop'&&T.in_hand!==T.opponents?` <span class="dim">(expected to see the flop; ${T.in_hand} still in the hand)</span>`:''}`
     +` &middot; Big blind <b>${fmt(S.bb)}</b> &middot; Your stack <b>${fmt(T.stack)}</b> &middot; Table size <b>${S.seats.filter(x=>!x.empty&&!x.out).length}</b>`
     +(T.bettor?` &middot; ${S.street==='preflop'?'Raise':'Bet'} by <b>${T.bettor}</b> to <b>${fmt(T.bet_to)}</b>`:'')
     +(T.preflop_raiser&&S.street!=='preflop'?` &middot; Preflop raiser <b>${T.preflop_raiser}</b>`:'');
