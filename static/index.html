@@ -168,12 +168,25 @@ dialog .field{margin-bottom:10px}
   <form method="dialog" id="sessForm">
     <h3 style="margin-top:0" id="dlgTitle">Start session</h3>
     <div id="startFields">
-      <div class="field"><label>Balance (total chips)</label><input id="sBal" type="number" inputmode="decimal" step="any"></div>
-      <div class="field"><label>Buy-in</label><input id="sBuy" type="number" inputmode="decimal" step="any"></div>
-      <div class="field"><label>Big blind</label><input id="sBB" type="number" inputmode="decimal" step="any"></div>
+      <div class="field"><div class="seg" id="sFmt"><button type="button" data-f="cash" class="on">Cash game</button><button type="button" data-f="tournament">Tournament</button></div></div>
+      <div id="cashFields">
+        <div class="field"><label>Balance (total chips)</label><input id="sBal" type="number" inputmode="decimal" step="any"></div>
+        <div class="field"><label>Buy-in</label><input id="sBuy" type="number" inputmode="decimal" step="any"></div>
+        <div class="field"><label>Big blind</label><input id="sBB" type="number" inputmode="decimal" step="any"></div>
+      </div>
+      <div id="tourFields" class="hidden">
+        <div class="field"><label>Entry fee (what you paid to enter, in money)</label><input id="tEntry" type="number" inputmode="decimal" step="any"></div>
+        <div class="field"><label>Starting chips (optional)</label><input id="tChips" type="number" inputmode="decimal" step="any"></div>
+        <div class="dim" style="font-size:12.5px">Type your hands into the RTA in tournament chips, with the current big blind in the Big blind box: they are saved in big blinds. At the end you enter how you finished.</div>
+      </div>
     </div>
     <div id="endFields" class="hidden">
       <div class="field"><label>Total balance now</label><input id="eBal" type="number" inputmode="decimal" step="any"></div>
+    </div>
+    <div id="endTour" class="hidden">
+      <div class="field"><label>Finishing place</label><input id="tPlace" type="number" inputmode="numeric" step="1" min="1"></div>
+      <div class="field"><label>Players in the field (optional)</label><input id="tSize" type="number" inputmode="numeric" step="1" min="0"></div>
+      <div class="field"><label>Prize won (0 if none)</label><input id="tPrize" type="number" inputmode="decimal" step="any" min="0"></div>
     </div>
     <div class="logrow" style="margin-top:12px">
       <button class="btn" id="dlgOk" value="ok">OK</button>
@@ -300,14 +313,15 @@ function toggle(code){
   else{const j=slots.findIndex(x=>!x); if(j<0)return; slots[j]=code}
   renderAll();schedule();
 }
-function bbKnown(){return !!(session?session.bb:(+$('bbIn').value||0))}  // with the big blind known, raises and limpers are read from the pot and bet
+const sessBB=()=>session&&session.format!=='tournament'?session.bb:null;     // a tournament session has no chip big blind: you type it
+function bbKnown(){return !!(sessBB()||(+$('bbIn').value||0))}  // with the big blind known, raises and limpers are read from the pot and bet
 function renderAll(){renderSlots();const nb=slots.slice(2).filter(Boolean).length;$('facingWrap').classList.toggle('hidden',nb>0||bbKnown());$('multiWrap').classList.toggle('hidden',nb<4)}
 
 /* ---------- calculation ---------- */
 function state(){
   return {hole:slots.slice(0,2).filter(Boolean), board:slots.slice(2).filter(Boolean),
     pot:(+$('pot').value||0)+(+$('call').value||0), call:+$('call').value||0, opps, range_mode:rangePct, raiser, table, opp_type:oppType, multi_street:multi,
-    position:pos, facing:bbKnown()?false:facing, stack:+$('stack').value||null, bb:session?session.bb:(+$('bbIn').value||null)};
+    position:pos, facing:bbKnown()?false:facing, stack:+$('stack').value||null, bb:sessBB()||(+$('bbIn').value||null)};
 }
 function schedule(){clearTimeout(timer);timer=setTimeout(calc,120)}
 async function calc(){
@@ -389,7 +403,7 @@ async function commit(a,amt){
 }
 function confirmAmt(){const v=+$('amt').value;if(!v)return;commit(pendingAct,v)}
 $('amtOk').onclick=confirmAmt;
-function prefillPot(){const bb=session?session.bb:(+$('bbIn').value||0);if(bb&&!$('pot').value)$('pot').value=clean(bb*1.5)}  // both blinds are in before you act
+function prefillPot(){const bb=sessBB()||(+$('bbIn').value||0);if(bb&&!$('pot').value)$('pot').value=clean(bb*1.5)}  // both blinds are in before you act
 
 /* ---------- save / clear ---------- */
 async function save(res){   // res = chips won (+) or lost (-) this hand
@@ -397,6 +411,7 @@ async function save(res){   // res = chips won (+) or lost (-) this hand
   const b={...last.s,range_pct:last.d.range_pct_used,equity:last.d.equity,required:last.d.required,suggested:last.d.action,
            taken:decisions.length?decisions[decisions.length-1].taken:null,decisions,result:res==null?'':res};
   const hr=await fetch('/api/hand',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});
+  if(!hr.ok){let m='Not saved';try{m=(await hr.json()).error||m}catch(e){}alert(m);return}
   try{notify((await hr.json()).notices)}catch(e){}
   if(res!=null&&startStack!==null){const ns=clean(startStack+res);$('stack').value=ns;store.set('stack',ns)}
   const order=SEATS[tableSize];
@@ -445,23 +460,41 @@ async function loadSession(){
   const r=await (await fetch('/api/session')).json();
   session=r.active; window.lastBalance=r.last_balance;
   const p=$('sessPill');
-  if(session){p.textContent=`Session live - buy-in ${session.buy_in.toLocaleString()} - BB ${session.bb}`;p.classList.add('live')}
+  if(session&&session.format==='tournament'){p.textContent=`Tournament live - entry ${session.buy_in.toLocaleString()}`;p.classList.add('live')}
+  else if(session){p.textContent=`Session live - buy-in ${session.buy_in.toLocaleString()} - BB ${session.bb}`;p.classList.add('live')}
   else{p.textContent='Start session';p.classList.remove('live')}
 }
+let sessFmt='cash';
+function paintFmt(){
+  document.querySelectorAll('#sFmt button').forEach(b=>b.classList.toggle('on',b.dataset.f===sessFmt));
+  $('cashFields').classList.toggle('hidden',sessFmt!=='cash');$('tourFields').classList.toggle('hidden',sessFmt!=='tournament');
+}
+document.querySelectorAll('#sFmt button').forEach(b=>b.onclick=()=>{sessFmt=b.dataset.f;paintFmt()});
 $('sessPill').onclick=()=>{
-  const ending=!!session;
-  $('dlgTitle').textContent=ending?'End session':'Start session';
-  $('startFields').classList.toggle('hidden',ending);$('endFields').classList.toggle('hidden',!ending);
-  if(!ending&&window.lastBalance!=null)$('sBal').value=window.lastBalance;
+  const ending=!!session, tour=ending&&session.format==='tournament';
+  $('dlgTitle').textContent=ending?(tour?'End tournament':'End session'):'Start session';
+  $('startFields').classList.toggle('hidden',ending);$('endFields').classList.toggle('hidden',!ending||tour);$('endTour').classList.toggle('hidden',!tour);
+  if(!ending){paintFmt();if(window.lastBalance!=null)$('sBal').value=window.lastBalance}
   $('sessDlg').showModal();
 };
 $('sessForm').onsubmit=async e=>{
   if(e.submitter&&e.submitter.value!=='ok')return;
   const h={'Content-Type':'application/json'};
   if(session){
-    if($('eBal').value==='')return;
-    const r=await (await fetch('/api/session/end',{method:'POST',headers:h,body:JSON.stringify({balance_after:+$('eBal').value})})).json();
-    if(r.backup)toast(r.backup);
+    let body;
+    if(session.format==='tournament'){
+      if(!$('tPlace').value)return;
+      body={place:+$('tPlace').value,size:+$('tSize').value||0,prize:+$('tPrize').value||0};
+    }else{
+      if($('eBal').value==='')return;
+      body={balance_after:+$('eBal').value};
+    }
+    const r=await (await fetch('/api/session/end',{method:'POST',headers:h,body:JSON.stringify(body)})).json();
+    if(r.recorded===false)toast('The Casino already recorded this tournament');
+    else if(r.backup)toast(r.backup);
+  }else if(sessFmt==='tournament'){
+    if(!$('tEntry').value)return;
+    await fetch('/api/session/start',{method:'POST',headers:h,body:JSON.stringify({format:'tournament',buy_in:+$('tEntry').value,start_chips:+$('tChips').value||null})});
   }else{
     if(!$('sBal').value||!$('sBuy').value||!$('sBB').value)return;
     await fetch('/api/session/start',{method:'POST',headers:h,body:JSON.stringify({balance:+$('sBal').value,buy_in:+$('sBuy').value,bb:+$('sBB').value})});

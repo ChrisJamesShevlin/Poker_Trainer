@@ -72,6 +72,11 @@ def _is_tournament(h):
     return (h["practice"] or 0) == 2
 
 
+def _is_t_session(x):
+    """A tournament session: made by the Casino for its tournaments, or one you logged in the RTA."""
+    return x["source"] == "tournament" or (x["format"] if "format" in x.keys() else "cash") == "tournament"
+
+
 def tournament_summary(con, stake=None):
     """Finished tournaments: entries, prizes, ROI, finishing places (money, as played: not mixed into cash results)."""
     try:
@@ -79,7 +84,11 @@ def tournament_summary(con, stake=None):
     except Exception:
         return None
     if stake is not None:
-        rows = [r for r in rows if r["stake"] in _stakes.STAKES and abs(_stakes.STAKES[r["stake"]]["bb"] / 100 - stake) < 1e-9]
+        def bb_of(r):
+            if "bb" in r.keys() and r["bb"] is not None:
+                return r["bb"]
+            return _stakes.STAKES[r["stake"]]["bb"] / 100 if r["stake"] in _stakes.STAKES else None
+        rows = [r for r in rows if bb_of(r) is not None and abs(bb_of(r) - stake) < 1e-9]
     if not rows:
         return None
     entries = sum(r["buy_in"] for r in rows) / 100
@@ -89,7 +98,7 @@ def tournament_summary(con, stake=None):
             "cashes": sum(1 for r in rows if r["prize"] > 0), "wins": sum(1 for r in rows if r["place"] == 1),
             "final_tables": sum(1 for r in rows if r["final_table"]),
             "avg_place_pct": sum(r["place"] / r["size"] for r in rows) / len(rows),
-            "recent": [{"label": _label(r["ts"]), "stake": r["stake"], "place": r["place"], "size": r["size"],
+            "recent": [{"label": _label(r["ts"]), "stake": r["stake"] or "real site", "place": r["place"], "size": r["size"],
                         "entry": r["buy_in"] / 100, "prize": r["prize"] / 100} for r in rows[-12:]]}
 
 
@@ -103,10 +112,10 @@ def summary(con, stake=None, fmt="cash"):
                         "ORDER BY h.ts").fetchall()
     if fmt == "tournament":
         hands = [h for h in hands if _is_tournament(h)]
-        sess = [x for x in sess if x["source"] == "tournament"]
+        sess = [x for x in sess if _is_t_session(x)]
     elif fmt == "cash":
         hands = [h for h in hands if not _is_tournament(h)]
-        sess = [x for x in sess if x["source"] != "tournament"]
+        sess = [x for x in sess if not _is_t_session(x)]
     s["format"] = fmt
     by_stake = {}                                  # every stake you have played (before any filter)
     for x in sess:
@@ -121,7 +130,7 @@ def summary(con, stake=None, fmt="cash"):
         near = lambda v: v is not None and abs(v - stake) < 1e-9
         sess = [x for x in sess if near(x["bb"])]
         hands = [h for h in hands if near(h["bb"])]
-    done = [x for x in sess if x["balance_after"] is not None and x["source"] != "tournament"]       # balances are cash only
+    done = [x for x in sess if x["balance_after"] is not None and not _is_t_session(x)]       # balances are cash only
     s["sessions"] = len(sess)
     s["hands"] = len(hands)
 

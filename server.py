@@ -43,6 +43,10 @@ def session():
 @app.post("/api/session/start")
 def session_start():
     d = request.get_json()
+    if d.get("format") == "tournament":                       # a tournament: an entry fee and starting chips, no balance
+        entry = float(d["buy_in"])
+        sid = store.start_session(db(), 0, entry, entry / 100, 0, "tournament", float(d["start_chips"]) if d.get("start_chips") else None)
+        return jsonify(id=sid)
     sid = store.start_session(db(), float(d["balance"]), float(d["buy_in"]), float(d["bb"]),
                               float(d.get("deposit") or 0))
     return jsonify(id=sid)
@@ -52,10 +56,14 @@ def session_start():
 def session_end():
     con = db()
     row = store.open_session(con)
+    recorded = None
     if row:
         d = request.get_json()
-        store.end_session(con, row["id"], float(d["balance_after"]), float(d.get("deposit") or 0))
-    return jsonify(ok=True, backup=backup.run(con))   # back up whenever a session ends
+        if row["format"] == "tournament":
+            recorded = store.end_tournament_session(con, row["id"], int(d["place"]), int(d.get("size") or 0), float(d.get("prize") or 0))
+        else:
+            store.end_session(con, row["id"], float(d["balance_after"]), float(d.get("deposit") or 0))
+    return jsonify(ok=True, recorded=recorded, backup=backup.run(con))   # back up whenever a session ends
 
 
 @app.post("/api/backup")
@@ -68,13 +76,24 @@ def hand():
     d = request.get_json()
     con = db()
     row = store.open_session(con)
-    q = Query(d["hole"], d["board"], float(d.get("pot") or 0), float(d.get("call") or 0),
-              int(d.get("opps") or 1), d.get("range_pct") or None)
-    res = d.get("result")
-    store.log_hand(con, row["id"] if row else None, q, d.get("position"),
-                   float(d["stack"]) if d.get("stack") else None, d["equity"], d["required"],
-                   d.get("suggested"), d.get("taken"), float(res) if res not in (None, "") else None,
-                   d.get("decisions"), practice=casino_mode() == "practice" and time.time() - _last_practice_hand < PRACTICE_ACTIVE_S)
+    pot, call = float(d.get("pot") or 0), float(d.get("call") or 0)
+    stack = float(d["stack"]) if d.get("stack") else None
+    res = float(d["result"]) if d.get("result") not in (None, "") else None
+    practice = casino_mode() == "practice" and time.time() - _last_practice_hand < PRACTICE_ACTIVE_S
+    if row is not None and row["format"] == "tournament":
+        # a tournament hand is typed in chips at the blinds of the moment: scale it to the session's big blind (entry / 100), the same way the
+        # Casino saves its tournament hands, so tournament results read in big blinds like cash ones
+        hand_bb = float(d.get("bb") or 0)
+        if hand_bb <= 0:
+            return jsonify(error="Enter the big blind (in chips) first: a tournament hand is logged in big blinds."), 400
+        k = row["bb"] / hand_bb
+        pot, call = pot * k, call * k
+        stack = stack * k if stack else None
+        res = res * k if res is not None else None
+        practice = 2
+    q = Query(d["hole"], d["board"], pot, call, int(d.get("opps") or 1), d.get("range_pct") or None)
+    store.log_hand(con, row["id"] if row else None, q, d.get("position"), stack, d["equity"], d["required"],
+                   d.get("suggested"), d.get("taken"), res, d.get("decisions"), practice=practice)
     with _lock:
         cur = grind_table().currency
     return jsonify(ok=True, notices=grind.check_new(con, cur))

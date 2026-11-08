@@ -5,6 +5,8 @@ import sqlite3
 import time
 from pathlib import Path
 
+from . import stakes as _stakes
+
 APP = "holdem"            # which app this copy is: hold'em and PLO keep separate data
 
 
@@ -26,7 +28,7 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions(
   id INTEGER PRIMARY KEY, start_ts REAL, end_ts REAL,
   balance_before REAL, buy_in REAL, bb REAL, balance_after REAL,
-  deposit_before REAL DEFAULT 0, deposit_during REAL DEFAULT 0, source TEXT DEFAULT 'rta');
+  deposit_before REAL DEFAULT 0, deposit_during REAL DEFAULT 0, source TEXT DEFAULT 'rta', format TEXT DEFAULT 'cash', start_chips REAL);
 CREATE TABLE IF NOT EXISTS hands(
   id INTEGER PRIMARY KEY, session_id INTEGER, ts REAL,
   hole TEXT, board TEXT, pot REAL, call REAL, opps INTEGER, range_pct INTEGER,
@@ -35,7 +37,8 @@ CREATE TABLE IF NOT EXISTS hands(
 CREATE TABLE IF NOT EXISTS trainer_state(key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE IF NOT EXISTS tournaments(
   id INTEGER PRIMARY KEY, ts REAL, stake TEXT, place INTEGER, size INTEGER, buy_in REAL, prize REAL, hands INTEGER, knockouts INTEGER,
-  level INTEGER, final_table INTEGER, heads_up INTEGER, min_bb REAL, table_moves INTEGER, sharks INTEGER);
+  level INTEGER, final_table INTEGER, heads_up INTEGER, min_bb REAL, table_moves INTEGER, sharks INTEGER,
+  source TEXT DEFAULT 'casino', bb REAL);
 CREATE TABLE IF NOT EXISTS trainer_hands(
   id INTEGER PRIMARY KEY, ts REAL, stake TEXT, hand_no INTEGER, position TEXT, hole TEXT, board TEXT,
   pot REAL, net REAL, showdown INTEGER, actions TEXT, strength TEXT, meta TEXT, practice INTEGER DEFAULT 0);
@@ -61,6 +64,15 @@ def connect(path=None):
         con.execute("ALTER TABLE hands ADD COLUMN trainer_hand_id INTEGER")             # the Casino hand this row is (at most one row per Casino hand)
     if "source" not in {r[1] for r in con.execute("PRAGMA table_info(sessions)")}:
         con.execute("ALTER TABLE sessions ADD COLUMN source TEXT DEFAULT 'rta'")         # 'casino' / 'practice' sessions are made by the Casino itself
+    if "format" not in {r[1] for r in con.execute("PRAGMA table_info(sessions)")}:
+        con.execute("ALTER TABLE sessions ADD COLUMN format TEXT DEFAULT 'cash'")        # 'tournament' = a tournament session you logged in the RTA (chips, not money)
+    if "start_chips" not in {r[1] for r in con.execute("PRAGMA table_info(sessions)")}:
+        con.execute("ALTER TABLE sessions ADD COLUMN start_chips REAL")
+    tcols = {r[1] for r in con.execute("PRAGMA table_info(tournaments)")}
+    if "source" not in tcols:
+        con.execute("ALTER TABLE tournaments ADD COLUMN source TEXT DEFAULT 'casino'")   # 'casino' = played in the Casino, 'rta' = a real-site tournament you logged
+    if "bb" not in tcols:
+        con.execute("ALTER TABLE tournaments ADD COLUMN bb REAL")                         # the level's big blind in money (entry / 100), for the stake filter
     con.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_hands_trainer ON hands(trainer_hand_id) WHERE trainer_hand_id IS NOT NULL")
     if "practice" not in {r[1] for r in con.execute("PRAGMA table_info(hands)")}:
         con.execute("ALTER TABLE hands ADD COLUMN practice INTEGER DEFAULT 0")    # 1 = logged while the Casino was in Practice: counts in Analytics, never towards Grinding
@@ -76,10 +88,12 @@ def connect(path=None):
     return con
 
 
-def start_session(con, balance_before, buy_in, bb, deposit_before=0.0):
-    """balance_before already includes any top-up; deposit_before says how much of it was a deposit."""
-    cur = con.execute("INSERT INTO sessions(start_ts,balance_before,buy_in,bb,deposit_before) VALUES(?,?,?,?,?)",
-                      (time.time(), balance_before, buy_in, bb, deposit_before))
+def start_session(con, balance_before, buy_in, bb, deposit_before=0.0, fmt="cash", start_chips=None):
+    """balance_before already includes any top-up; deposit_before says how much of it was a deposit.
+    A tournament session (fmt="tournament") has an entry fee instead: buy_in = the entry, bb = entry / 100 (the level's big blind in money,
+    the same scale the Casino uses for its tournament hands), and no balance."""
+    cur = con.execute("INSERT INTO sessions(start_ts,balance_before,buy_in,bb,deposit_before,format,start_chips) VALUES(?,?,?,?,?,?,?)",
+                      (time.time(), balance_before, buy_in, bb, deposit_before, fmt, start_chips))
     con.commit()
     return cur.lastrowid
 
@@ -88,6 +102,22 @@ def end_session(con, sid, balance_after, deposit_during=0.0):
     con.execute("UPDATE sessions SET end_ts=?, balance_after=?, deposit_during=? WHERE id=?",
                 (time.time(), balance_after, deposit_during, sid))
     con.commit()
+
+
+def end_tournament_session(con, sid, place, size, prize):
+    """End a tournament session: how you finished and what you won. The Casino records its own tournaments, so if it already did for
+    this session's time, nothing is added twice. Returns True if a result was recorded."""
+    row = con.execute("SELECT * FROM sessions WHERE id=?", (sid,)).fetchone()
+    con.execute("UPDATE sessions SET end_ts=? WHERE id=?", (time.time(), sid))
+    done = con.execute("SELECT 1 FROM tournaments WHERE source='casino' AND ts >= ? AND ABS(COALESCE(bb, 0) - ?) < 1e-9 LIMIT 1",
+                       (row["start_ts"], row["bb"])).fetchone()
+    n = con.execute("SELECT COUNT(*) FROM hands WHERE session_id=?", (sid,)).fetchone()[0]
+    if not done:
+        con.execute("INSERT INTO tournaments(ts,stake,place,size,buy_in,prize,hands,knockouts,level,final_table,heads_up,min_bb,table_moves,sharks,source,bb) "
+                    "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (time.time(), "", place, size, round(row["buy_in"] * 100), round(prize * 100), n, 0, 0, 0, 0, 0, 0, 0, "rta", row["bb"]))
+    con.commit()
+    return not done
 
 
 def open_session(con):
@@ -183,7 +213,7 @@ def log_hand(con, sid, q, position, stack, eq, required, suggested, taken, resul
         "equity,required,suggested,taken,result,decisions,practice) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (sid, time.time(), " ".join(q.hole), " ".join(q.board), q.pot, q.call, q.opponents,
          q.range_pct, position, stack, eq, required, suggested, taken, result, json.dumps(decisions) if decisions is not None else None,
-         1 if practice else 0))
+         _flag(practice)))
     con.commit()
 
 
@@ -219,10 +249,11 @@ def kv_save(con, key, value):
 
 def log_tournament(con, r):
     """One finished tournament (the dict from Table.tourney_result())."""
-    con.execute("INSERT INTO tournaments(ts,stake,place,size,buy_in,prize,hands,knockouts,level,final_table,heads_up,min_bb,table_moves,sharks) "
-                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+    con.execute("INSERT INTO tournaments(ts,stake,place,size,buy_in,prize,hands,knockouts,level,final_table,heads_up,min_bb,table_moves,sharks,source,bb) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (time.time(), r["stake"], r["place"], r["size"], r["buy_in"], r["prize"], r["hands"], r["knockouts"], r["level"],
-                 1 if r["final_table"] else 0, 1 if r["heads_up"] else 0, r["min_bb"], r["table_moves"], r["sharks"]))
+                 1 if r["final_table"] else 0, 1 if r["heads_up"] else 0, r["min_bb"], r["table_moves"], r["sharks"], "casino",
+                 _stakes.STAKES[r["stake"]]["bb"] / 100 if r["stake"] in _stakes.STAKES else None))
     con.commit()
 
 
