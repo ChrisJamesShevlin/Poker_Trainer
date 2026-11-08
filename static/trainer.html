@@ -126,6 +126,23 @@ body.focus .seat{width:clamp(110px,22%,176px)}
 body.focus .seat .st{font-size:17px}body.focus .seat .nm{font-size:clamp(11px,1.2vw,14px)}
 body.focus .seat .bet,body.focus .seat .act{font-size:13px}
 body.focus .pot{font-size:19px}
+/* ---- focus mode fits the window: the table takes whatever height is left, nothing scrolls ---- */
+body.focus{height:100vh;display:flex;flex-direction:column;overflow:hidden}
+body.focus header{flex:0 0 auto;min-height:0;padding:6px 18px}
+body.focus main{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;padding:8px 18px;max-width:none}
+body.focus .grid{flex:1 1 auto;min-height:0;align-items:stretch}
+body.focus .grid>div{display:flex;flex-direction:column;min-height:0}
+body.focus .feltwrap{flex:1 1 auto;min-height:210px;margin-bottom:8px}
+body.focus .felt{height:100%}
+body.focus #controls{flex:0 0 auto;margin-bottom:0;padding:10px 14px}
+body.focus .card{margin-bottom:8px}
+body.focus #logCard{flex:1 1 0;min-height:0;display:flex;flex-direction:column}
+body.focus #logCard .loglist{flex:1 1 auto;min-height:0;max-height:none;overflow:hidden}
+body.focus .pc{width:clamp(26px,4.4vh,38px);height:clamp(37px,6.2vh,54px)}
+body.focus .pc .r{font-size:clamp(12px,2vh,18px)}body.focus .pc .s{font-size:clamp(13px,2.1vh,19px)}
+body.focus .pc.big{width:clamp(46px,8.6vh,68px);height:clamp(66px,12.4vh,96px)}
+body.focus .pc.big .r{font-size:clamp(20px,3.6vh,32px)}body.focus .pc.big .s{font-size:clamp(22px,3.8vh,34px)}
+@media(max-height:620px){body.focus{overflow:auto;height:auto;min-height:100vh}}
 </style>
 </head>
 <body>
@@ -157,7 +174,7 @@ body.focus .pot{font-size:19px}
       <div class="stats" id="stats"></div>
       <div class="dim" id="acctStat" style="text-align:center;margin-top:8px;font-size:13px"></div>
     </div>
-    <div class="card"><h2>This hand: who did what</h2><div id="news" style="font-size:12.5px;margin-bottom:6px"></div><ul class="loglist" id="log"><li class="dim">Deal a hand to start.</li></ul></div>
+    <div class="card" id="logCard"><h2>This hand: who did what</h2><div id="news" style="font-size:12.5px;margin-bottom:6px"></div><ul class="loglist" id="log"><li class="dim">Deal a hand to start.</li></ul></div>
     <div class="card" id="lobbyCard">
       <h2>Mode</h2>
       <div class="field"><div class="seg" id="modeSeg"></div><div class="dim" style="font-size:12px;margin-top:4px" id="modeText"></div></div>
@@ -421,7 +438,7 @@ function renderControls(){
   }
   const L=S.legal,T=S.for_tool;
   const tool=document.createElement('div');tool.className='tool';
-  tool.innerHTML=`<div class="t">For the RTA</div>Seat <b>${T.position}</b> &middot; Pot <b>${fmt(T.pot)}</b> &middot; Bet to call <b>${fmt(T.to_call)}</b> &middot; Opponents <b>${T.opponents}</b>`
+  tool.innerHTML=`<div class="t">For the RTA</div>Seat <b>${T.position}</b> &middot; Pot <b>${fmt(T.pot)}</b> &middot; Bet to call <b>${fmt(T.to_call)}</b> &middot; Opponents <b>${T.opponents}</b>${S.street==='preflop'&&T.in_hand!==T.opponents?` <span class="dim">(expected to see the flop; ${T.in_hand} still in the hand)</span>`:''}`
     +` &middot; Big blind <b>${fmt(S.bb)}</b> &middot; Your stack <b>${fmt(T.stack)}</b> &middot; Table size <b>${S.seats.filter(x=>!x.empty&&!x.out).length}</b>`
     +(T.bettor?` &middot; ${S.street==='preflop'?'Raise':'Bet'} by <b>${T.bettor}</b> to <b>${fmt(T.bet_to)}</b>`:'')
     +(T.preflop_raiser&&S.street!=='preflop'?` &middot; Preflop raiser <b>${T.preflop_raiser}</b>`:'');

@@ -18,7 +18,7 @@ import time
 
 from . import mtt, personas, stakes
 from .bots import Bot, check_or_fold, make_traits, record_reads
-from .game import Hand, IllegalAction, best_five, hand_name
+from .game import Hand, IllegalAction, best_five, hand_name, likely_opponents
 
 BOT_SIMS = 200
 TIMER_CHOICES = [0, 10, 15, 20, 30, 45, 60]        # seconds; 0 = off (any value 0-120 is accepted)
@@ -544,7 +544,7 @@ class Table:
         h = self.hand
         pre = [e for e in h.log if e[0] == "preflop" and e[2] == "raise"]
         return {"position": h.position(self.HERO), "pot": h.pot() - legal["to_call"], "to_call": legal["to_call"],
-                "opponents": len(h.active()) - 1,
+                "opponents": likely_opponents(h, self.HERO), "in_hand": len(h.active()) - 1,
                 "bettor": h.position(h.aggressor) if h.aggressor is not None else None, "bet_to": h.current_bet,
                 "preflop_raiser": h.position(pre[-1][1]) if pre else None, "stack": h.stack[self.HERO]}
 

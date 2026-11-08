@@ -68,8 +68,8 @@ THREE_BET_VS_EARLY = expand("QQ+, AKs, AKo")
 SB_VS_EARLY = expand("JJ+, AKo, AJs+, A5s-A2s")
 CALL = {
     "UTG": expand("66-TT, ATs+, KQs, KJs, QJs, JTs, T9s, AQo"),
-    "HJ": expand("66-TT, ATs+, KJs+, QJs, JTs, T9s, 98s, AQo"),
-    "CO": expand("55-TT, A9s+, KTs+, QTs+, JTs, T9s, 98s, 87s, AQo, KQo"),
+    "HJ": expand("22-TT, ATs+, KJs+, QJs, JTs, T9s, 98s, AQo"),
+    "CO": expand("22-TT, A9s+, KTs+, QTs+, JTs, T9s, 98s, 87s, AQo, KQo"),
     # BTN: PokerSkill's "button vs cutoff open" calling chart (14.0% of hands)
     "BTN": expand("22-TT, A9s-A6s, AQs, AJs, ATs, KTs, K9s, QJs, QTs, Q9s, JTs, J9s, T9s, T8s, 98s, 87s, AQo, AJo, KQo, KJo, QJo"),
     "SB": expand("77-TT, ATs+, KQs, QJs, JTs, AQo"),
@@ -214,8 +214,9 @@ def advise(hole, position, stack_bb, facing_raise, size_tier="normal", raise_bb=
             call = _trim(CALL[position], stack_bb)
         if early and position != "BB":
             call = call | {"JJ"}             # JJ calls (not re-raises) an early-position open
+            pairs = {c for c in call if len(c) == 2 and c[0] in "23456"}      # small pairs call to set-mine, whatever their rank (when deep)
             order = [c for c in ranking() if c in call]
-            call = set(order[: math.ceil(len(order) * 0.7)])
+            call = set(order[: math.ceil(len(order) * 0.7)]) | (pairs if band == "deep" else set())
         if position == "SB" and early:
             three_bet, call = SB_VS_EARLY, set()
         else:
@@ -225,6 +226,8 @@ def advise(hole, position, stack_bb, facing_raise, size_tier="normal", raise_bb=
             act, why = "RAISE", ("premium: re-raise" if early else "premium or good bluff-3-bet hand: re-raise")
         elif cls in call:
             act, why = "CALL", f"in the {position} calling chart vs a raise" + (f" from {raiser}" if raiser else "") + src
+            if len(cls) == 2 and cls[0] in "23456" and position != "BB":
+                why += ". Small pair: call to set-mine (you flop a set about 1 time in 8, so it needs deep stacks and a normal-size raise)"
         else:
             act, why = "FOLD", f"not in the {position} calling chart vs a raise" + (f" from {raiser}" if raiser else "") + src
     return {"action": act, "text": head, "why": why, "class": cls, "rank": rank, "pct": pct}

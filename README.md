@@ -47,6 +47,8 @@ preflop guide and check/call/raise suggestion are simple rules of thumb.
 
 (The screenshots use demo data.)
 
+The Casino (in Focus mode) and the RTA's Hand tab fit the window at any size with no scroll bars: the table takes the height that is left, and the RTA shrinks to fit.
+
 ## Casino (play against bots)
 
 http://127.0.0.1:5173/trainer (the RTA page has a "Casino" link): you against five bots at No-Limit Hold'em, so the

@@ -276,11 +276,24 @@ class Hand:
                        "board": list(self.board), "hands": {s: list(self.hole[s]) for s in contenders}, "won": won}
 
 
+def likely_opponents(hand, seat=0):
+    """How many opponents will probably see the flop with you, for the calculator. After the flop it is simply everyone still in. Before
+    it, the players still to act have not decided yet: counting all of them makes a set-mining hand look hopeless, so only the players who
+    have already called or raised count in full, plus about a quarter of those yet to act (at least one opponent)."""
+    active = [s for s in hand.active() if s != seat]
+    if hand.street != "preflop":
+        return len(active)
+    acted = {s for st, s, kind, _ in hand.log if st == "preflop"}
+    in_money = {s for st, s, kind, _ in hand.log if st == "preflop" and kind in ("call", "raise") and s != seat and not hand.folded[s]}
+    behind = [s for s in active if s not in acted]
+    return max(1, min(len(active), len(in_money) + int(round(len(behind) * 0.25))))
+
+
 def service_input(hand, seat, opp_type="normal"):
     """The spot as the calculator's service.evaluate() expects it: what the tool would be shown at this moment."""
     info = hand.legal(seat)
     return dict(hole=hand.hole[seat], board=hand.board, pot=hand.pot(), call=info["to_call"],
-                opps=len(hand.active()) - 1, position=hand.position(seat), stack=hand.stack[seat], bb=hand.bb,
+                opps=likely_opponents(hand, seat), position=hand.position(seat), stack=hand.stack[seat], bb=hand.bb,
                 range_mode="auto", opp_type=opp_type,
                 raiser=hand.position(hand.aggressor) if hand.aggressor is not None else None)
 

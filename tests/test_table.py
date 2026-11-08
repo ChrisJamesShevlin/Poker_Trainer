@@ -188,7 +188,8 @@ def test_you_can_see_who_did_what_and_what_to_type_into_the_calculator():
     assert tool["pot"] + tool["to_call"] == st["pot"]
     last_raiser = [e for e in t.hand.log if e[0] == "preflop" and e[2] == "raise"][-1][1]
     assert tool["bettor"] == t.hand.position(last_raiser) and tool["preflop_raiser"] == tool["bettor"]
-    assert tool["position"] == t.hand.position(0) and tool["opponents"] == len(t.hand.active()) - 1
+    assert tool["position"] == t.hand.position(0) and tool["in_hand"] == len(t.hand.active()) - 1
+    assert 1 <= tool["opponents"] <= tool["in_hand"]                      # before the flop: the players likely to see it, not everyone still to act
 
 
 def test_first_raise_after_the_flop_is_called_a_bet():

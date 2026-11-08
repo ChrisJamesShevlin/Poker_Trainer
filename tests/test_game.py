@@ -148,3 +148,18 @@ def test_odd_chip_goes_left_of_the_button():
         h.act(h.to_act, "check")
     assert h.result["winners"] == [2, 3, 4]
     assert h.result["net"] == [0, -1, 1, 0, 0, 0]
+
+
+def test_likely_opponents_preflop_counts_callers_in_full_and_those_still_to_act_partly():
+    from pokercalc.game import Hand, likely_opponents
+    h = Hand([200] * 6, button=0, sb=1, bb=2, seed=1)
+    assert h.to_act == 3 and likely_opponents(h, 3) == 1                      # first to act: five yet to decide, about one will come along
+    h.act(3, ("raise", 6))                                                    # UTG raises
+    h.act(4, "fold")
+    assert h.to_act == 5 and likely_opponents(h, 5) == 2                      # the raiser counts in full, plus about one of the three behind
+    h.act(5, "call")
+    assert likely_opponents(h, 0) >= 2                                        # more people in now
+    flop = Hand([200] * 6, button=0, sb=1, bb=2, seed=2)
+    for s in (3, 4, 5, 0, 1):
+        flop.act(s, "fold")
+    assert flop.over or likely_opponents(flop, 0) == len(flop.active()) - 1
