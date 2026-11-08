@@ -98,6 +98,11 @@ CASINO_WINDOW_S = 20 * 60          # a hand typed into the RTA is matched to a C
 CASINO_SESSION_GAP_S = 30 * 60
 
 
+def _flag(practice):
+    """What the hands table stores for where a hand was played: 0 cash (Grinding), 1 Practice, 2 a tournament."""
+    return 2 if practice == 2 else 1 if practice else 0
+
+
 def _cards(x):
     return set(x.split()) if isinstance(x, str) else set(x or [])
 
@@ -111,7 +116,7 @@ def _same_hand(hole_a, board_a, hole_b, board_b):
 def _refresh_casino_session(con, sid):
     """A Casino-made session has no balances of its own: its result is just its hands. Drop it if it has none left."""
     row = con.execute("SELECT source FROM sessions WHERE id=?", (sid,)).fetchone()
-    if not row or row["source"] not in ("casino", "practice"):
+    if not row or row["source"] not in ("casino", "practice", "tournament"):
         return
     n, total, last = con.execute("SELECT COUNT(*), COALESCE(SUM(result), 0), MAX(ts) FROM hands WHERE session_id=?", (sid,)).fetchone()
     if n == 0:
@@ -121,7 +126,7 @@ def _refresh_casino_session(con, sid):
 
 
 def _casino_session(con, bb, buy_in, practice, ts):
-    kind = "practice" if practice else "casino"
+    kind = "tournament" if practice == 2 else "practice" if practice else "casino"
     row = con.execute("SELECT id FROM sessions WHERE source=? AND bb=? AND end_ts IS NOT NULL AND end_ts >= ? ORDER BY id DESC LIMIT 1",
                       (kind, bb, ts - CASINO_SESSION_GAP_S)).fetchone()
     if row:
@@ -143,7 +148,7 @@ def sync_casino_hand(con, trainer_id, c):
             continue
         if _same_hand(r["hole"], r["board"], c["hole"], c["board"]):
             con.execute("UPDATE hands SET trainer_hand_id=?, source='both', board=?, result=?, practice=? WHERE id=?",
-                        (trainer_id, " ".join(c["board"]), c["net"], 1 if c["practice"] else 0, r["id"]))
+                        (trainer_id, " ".join(c["board"]), c["net"], _flag(c["practice"]), r["id"]))
             con.commit()
             return r["id"]
     sid = _casino_session(con, c["bb"], c["buy_in"], c["practice"], c["ts"])
@@ -151,7 +156,7 @@ def sync_casino_hand(con, trainer_id, c):
         "INSERT INTO hands(session_id,ts,hole,board,pot,call,opps,range_pct,position,stack,equity,required,suggested,taken,result,decisions,practice,"
         "source,trainer_hand_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (sid, c["ts"], " ".join(c["hole"]), " ".join(c["board"]), c["pot"], 0, c["opps"], None, c["position"], c["stack"], None, None, None,
-         c["taken"], c["net"], json.dumps(c["decisions"]), 1 if c["practice"] else 0, "casino", trainer_id))
+         c["taken"], c["net"], json.dumps(c["decisions"]), _flag(c["practice"]), "casino", trainer_id))
     _refresh_casino_session(con, sid)
     con.commit()
     return cur.lastrowid

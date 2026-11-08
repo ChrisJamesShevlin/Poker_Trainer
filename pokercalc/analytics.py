@@ -7,6 +7,8 @@ and summary(con, stake=...) can look at one stake only (stake = the big blind of
 import json
 import time
 
+from . import stakes as _stakes
+
 WIN_WINDOW = 20      # hands in the rolling win-rate window
 CALL_WINDOW = 10     # calls in the rolling equity window
 POSITIONS = ["UTG", "HJ", "CO", "BTN", "SB", "BB"]
@@ -66,11 +68,46 @@ def session_mismatches(done, hands):
     return out
 
 
-def summary(con, stake=None):
+def _is_tournament(h):
+    return (h["practice"] or 0) == 2
+
+
+def tournament_summary(con, stake=None):
+    """Finished tournaments: entries, prizes, ROI, finishing places (money, as played: not mixed into cash results)."""
+    try:
+        rows = con.execute("SELECT * FROM tournaments ORDER BY ts, id").fetchall()
+    except Exception:
+        return None
+    if stake is not None:
+        rows = [r for r in rows if r["stake"] in _stakes.STAKES and abs(_stakes.STAKES[r["stake"]]["bb"] / 100 - stake) < 1e-9]
+    if not rows:
+        return None
+    entries = sum(r["buy_in"] for r in rows) / 100
+    prizes = sum(r["prize"] for r in rows) / 100
+    return {"count": len(rows), "entries": entries, "prizes": prizes, "net": prizes - entries,
+            "roi": (prizes - entries) / entries if entries else None,
+            "cashes": sum(1 for r in rows if r["prize"] > 0), "wins": sum(1 for r in rows if r["place"] == 1),
+            "final_tables": sum(1 for r in rows if r["final_table"]),
+            "avg_place_pct": sum(r["place"] / r["size"] for r in rows) / len(rows),
+            "recent": [{"label": _label(r["ts"]), "stake": r["stake"], "place": r["place"], "size": r["size"],
+                        "entry": r["buy_in"] / 100, "prize": r["prize"] / 100} for r in rows[-12:]]}
+
+
+def summary(con, stake=None, fmt="cash"):
+    """fmt: "cash" (Grinding and Practice), "tournament" or "all". Tournament hands are in big blinds only: their chips are not money,
+    so the money charts, balances and session results stay cash-only."""
     s = {}
+    fmt = fmt if fmt in ("cash", "tournament", "all") else "cash"
     sess = con.execute("SELECT * FROM sessions ORDER BY id").fetchall()
     hands = con.execute("SELECT h.*, s.bb AS bb FROM hands h LEFT JOIN sessions s ON s.id=h.session_id "
                         "ORDER BY h.ts").fetchall()
+    if fmt == "tournament":
+        hands = [h for h in hands if _is_tournament(h)]
+        sess = [x for x in sess if x["source"] == "tournament"]
+    elif fmt == "cash":
+        hands = [h for h in hands if not _is_tournament(h)]
+        sess = [x for x in sess if x["source"] != "tournament"]
+    s["format"] = fmt
     by_stake = {}                                  # every stake you have played (before any filter)
     for x in sess:
         if x["bb"]:
@@ -84,7 +121,7 @@ def summary(con, stake=None):
         near = lambda v: v is not None and abs(v - stake) < 1e-9
         sess = [x for x in sess if near(x["bb"])]
         hands = [h for h in hands if near(h["bb"])]
-    done = [x for x in sess if x["balance_after"] is not None]
+    done = [x for x in sess if x["balance_after"] is not None and x["source"] != "tournament"]       # balances are cash only
     s["sessions"] = len(sess)
     s["hands"] = len(hands)
 
@@ -183,6 +220,7 @@ def summary(con, stake=None):
                     "bb100": 100 * sum(b) / len(b) if b else None,
                     "win_rate": (sum(1 for h in hs if h["result"] > 0) / len(hs)) if hs else None})
     s["per_session"] = per
+    s["tournaments"] = tournament_summary(con, stake) if fmt != "cash" else None
 
     # ---- where you win / lose
     blank = lambda: {"hands": 0, "net": 0.0, "hands_bb": 0, "net_bb": 0.0}

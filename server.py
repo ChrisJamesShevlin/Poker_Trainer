@@ -101,7 +101,7 @@ def analytics_api():
         stake = float(request.args["stake"]) if request.args.get("stake") else None     # a big blind, to look at one stake only
     except ValueError:
         stake = None
-    return jsonify(analytics.summary(db(), stake))
+    return jsonify(analytics.summary(db(), stake, request.args.get("fmt", "cash")))
 
 
 # ------------------------------------------------------------------ trainer: play against bots
@@ -206,8 +206,12 @@ _STREET = {"preflop": 0, "flop": 3, "turn": 4, "river": 5}
 
 
 def casino_row(t, h):
-    """The finished hand as the Analytics table wants it: money (not cents), your position and what you did on each street."""
-    bb = t.bb / 100
+    """The finished hand as the Analytics table wants it: money (not cents), your position and what you did on each street.
+    A tournament hand is in chips at that moment's blinds, so it is scaled to the level's big blind: its results then read the same
+    in big blinds as a cash hand (the money figures for it are only that scale, and the money views leave tournaments out)."""
+    tour = t is _tourney
+    k = (stakes.STAKES[t.stake]["bb"] / t.bb) if tour else 1.0            # cents of the level's big blind per chip of this hand's blinds
+    bb = (t.bb * k) / 100
     decisions, raised = [], set()
     for st, seat, kind, _ in h.log:
         if seat == 0:
@@ -215,9 +219,9 @@ def casino_row(t, h):
             decisions.append({"street": _STREET[st], "suggested": None, "taken": taken})
         if kind == "raise":
             raised.add(st)
-    return {"hole": list(h.hole[0]), "board": list(h.board), "pot": h.pot() / 100, "net": t.last["net"] / 100, "stack": h.start_stack[0] / 100,
+    return {"hole": list(h.hole[0]), "board": list(h.board), "pot": h.pot() * k / 100, "net": t.last["net"] * k / 100, "stack": h.start_stack[0] * k / 100,
             "bb": bb, "buy_in": stakes.buy_in_range(t.stake)[1] / 100, "position": h.position(0), "opps": len(h.start_stack) - len(h.out) - 1,
-            "decisions": decisions, "taken": decisions[-1]["taken"] if decisions else None, "ts": time.time(), "practice": t is _practice}
+            "decisions": decisions, "taken": decisions[-1]["taken"] if decisions else None, "ts": time.time(), "practice": 2 if tour else t is _practice}
 
 
 def trainer_save(t=None):
@@ -232,8 +236,7 @@ def trainer_save(t=None):
         h = t.hand
         tid = store.log_trainer_hand(con, t.stake, t.last["hand_no"], h.position(0), h.hole[0], h.board, h.pot(),
                                      t.last["net"], t.last["showdown"], h.log, t.strength, grind.hand_meta(t), practice=2 if tournament else practice)
-        if not tournament:                                        # Grinding and Practice hands count in Analytics, as one row each
-            store.sync_casino_hand(con, tid, casino_row(t, h))
+        store.sync_casino_hand(con, tid, casino_row(t, h))         # every Casino hand counts in Analytics, as one row each (tournaments flagged)
         if practice:
             _logged_practice = t.last["hand_no"]
             _last_practice_hand = time.time()

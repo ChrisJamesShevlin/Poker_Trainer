@@ -182,12 +182,41 @@ def test_using_the_rta_alongside_the_casino_still_gives_one_row_per_hand(client)
     assert server.db().execute("SELECT COUNT(*) FROM trainer_hands").fetchone()[0] == 1
 
 
-def test_tournament_hands_are_not_added_to_analytics(client):
+def test_tournament_hands_count_in_analytics_with_their_own_filter(client):
     client.post("/api/trainer/settings", json={"mode": "tournament"})
     client.post("/api/tourney/register", json={"stake": "0.01/0.02"})
     deal_and_fold(client)
     c = server.db()
-    assert c.execute("SELECT COUNT(*) FROM trainer_hands").fetchone()[0] == 1 and rows(c) == []
+    t = c.execute("SELECT net FROM trainer_hands").fetchone()["net"]                        # chips; the blinds were 15/30
+    r = rows(c)
+    assert len(r) == 1 and r[0]["practice"] == 2 and r[0]["source"] == "casino"
+    sess = c.execute("SELECT bb, source FROM sessions WHERE id=?", (r[0]["session_id"],)).fetchone()
+    assert sess["source"] == "tournament" and abs(sess["bb"] - 0.02) < 1e-9               # the level's big blind
+    assert abs(r[0]["result"] / sess["bb"] - t / 30) < 1e-6                                 # in big blinds it reads like a cash hand
+    assert analytics.summary(c)["hands"] == 0                                               # the default view is cash only
+    assert analytics.summary(c, fmt="tournament")["hands"] == 1 and analytics.summary(c, fmt="all")["hands"] == 1
+    assert analytics.summary(c, fmt="all")["total_pl"] == 0                                 # tournament chips are not cash profit
+
+
+def test_the_analytics_filter_separates_cash_from_tournament_hands(client):
+    deal_and_fold(client)                                                                   # one cash hand
+    client.post("/api/trainer/settings", json={"mode": "tournament"})
+    client.post("/api/tourney/register", json={"stake": "0.01/0.02"})
+    deal_and_fold(client)                                                                   # one tournament hand
+    c = server.db()
+    assert [analytics.summary(c, fmt=f)["hands"] for f in ("cash", "tournament", "all")] == [1, 1, 2]
+    assert client.get("/api/analytics?fmt=tournament").get_json()["format"] == "tournament"
+    assert client.get("/api/analytics").get_json()["format"] == "cash"
+
+
+def test_finished_tournaments_show_entries_prizes_and_roi(client):
+    c = server.db()
+    c.execute("INSERT INTO tournaments(ts,stake,place,size,buy_in,prize,hands,knockouts,level,final_table,heads_up,min_bb,table_moves,sharks) "
+              "VALUES(1,'0.01/0.02',1,36,200,1000,80,3,5,1,1,10,1,4),(2,'0.01/0.02',20,36,200,0,50,0,4,0,0,5,2,4)")
+    c.commit()
+    t = analytics.summary(c, fmt="tournament")["tournaments"]
+    assert t["count"] == 2 and t["entries"] == 4.0 and t["prizes"] == 10.0 and t["cashes"] == 1 and t["wins"] == 1
+    assert abs(t["roi"] - 1.5) < 1e-9 and analytics.summary(c)["tournaments"] is None
 
 
 def test_old_databases_get_the_new_columns_and_the_unique_index(tmp_path):

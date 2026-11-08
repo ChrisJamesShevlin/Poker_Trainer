@@ -105,7 +105,7 @@ The Analytics tab has a **Money / Big blinds** switch and a **stake filter** (by
 so a result at a bigger stake counts for more; big blinds divide every result by its own big blind, so a win at a small
 stake and a loss at a bigger one can be compared fairly (the bb/100 figure and the winnings-in-big-blinds line already did
 this). When you have played more than one stake, the page warns you that the money charts mix them. Tables show both. The
-analytics cover the hands you log in the RTA and every Casino hand played while Grinding or in Practice (not tournaments), so you can play the Casino without the RTA and still see your results. A hand is always ONE row: if you also type a Casino hand into the RTA, it fills in that same row (matched by the cards and the time), and the database refuses a second row for the same Casino hand.
+analytics cover the hands you log in the RTA and every Casino hand played while Grinding, in Practice or in a tournament, so you can play the Casino without the RTA and still see your results. A Cash / Tournaments / All switch separates the formats: tournament hands are shown in big blinds only (their chips are not money, so they never mix into cash profit), and a Tournaments card shows entries, prizes, ROI and finishing places. A hand is always ONE row: if you also type a Casino hand into the RTA, it fills in that same row (matched by the cards and the time), and the database refuses a second row for the same Casino hand.
 
 ## Where your data lives
 

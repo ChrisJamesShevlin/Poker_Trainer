@@ -20,8 +20,8 @@
 
   let charts = [], view = get('anView', 'charts'), last = null;
   // money is your real bankroll; big blinds make results comparable across stakes. stake = a big blind, or null for all stakes
-  let unit = get('anUnit', 'money'), stake = get('anStake', null);
-  const BB = () => unit === 'bb';
+  let unit = get('anUnit', 'money'), stake = get('anStake', null), fmt = get('anFmt', 'cash');      // fmt: cash | tournament | all
+  const BB = () => unit === 'bb' || fmt !== 'cash';        // tournament chips are not money, so those views are always in big blinds
   const uword = () => (BB() ? ' bb' : ' chips');
   const sv = v => signed(v) + (BB() ? ' bb' : '');            // a signed value with its unit
   const r1 = v => Math.round(v * 10) / 10;
@@ -150,11 +150,16 @@
       seg.appendChild(b);
     });
     acts.appendChild(seg);
+    const fseg = el('div', 'an-seg'); fseg.title = 'Cash games, tournaments, or both together (tournaments are shown in big blinds)';
+    [['cash', 'Cash'], ['tournament', 'Tournaments'], ['all', 'All']].forEach(([k, label]) => {
+      const b = el('button', fmt === k ? 'on' : '', label); b.onclick = () => { fmt = k; put('anFmt', k); load(); }; fseg.appendChild(b);
+    });
+    acts.appendChild(fseg);
     const useg = el('div', 'an-seg'); useg.title = 'Money adds up your real winnings; big blinds compare results fairly across stakes';
     [['money', 'Money'], ['bb', 'Big blinds']].forEach(([k, label]) => {
       const b = el('button', unit === k ? 'on' : '', label); b.onclick = () => { unit = k; put('anUnit', k); build(last); }; useg.appendChild(b);
     });
-    acts.appendChild(useg);
+    if (fmt === 'cash') acts.appendChild(useg);
     if ((s.stakes && s.stakes.length > 1) || stake != null) {
       const sel = el('select', 'an-sel'); sel.setAttribute('aria-label', 'Stake');
       [['', 'All stakes']].concat(s.stakes.map(x => [String(x.bb), `Big blind ${num(x.bb)} (${x.hands} hands)`])).forEach(([v, label]) => {
@@ -186,13 +191,16 @@
       `(balance ${m.balance_before} at the start, ${m.balance_after} at the end, buy-in ${m.buy_in}). Check the starting and ending balances: both should be your total ` +
       'chips the same way, so the net result and the totals above can be trusted.')));
 
+    if (s.tournaments) tourneyCard(root, s.tournaments);
+
     // hero + tiles
     const top = el('div', 'an-top');
     const hero = el('div', 'an-card hero');
     hero.appendChild(el('div', 'hlbl', BB() ? 'Net result from play (big blinds)' : 'Net result from play'));
-    const hasSess = s.session_pl.length > 0;
-    hero.appendChild(el('div', 'val', hasSess ? (BB() ? signed(r1(s.winnings_bb[s.winnings_bb.length - 1])) + ' bb' : signed(s.total_pl)) : '–'));
-    const sub = hasSess
+    const hasSess = s.session_pl.length > 0 || (fmt !== 'cash' && s.cum_results_bb.length > 0);
+    hero.appendChild(el('div', 'val', hasSess ? (fmt !== 'cash' ? signed(r1(s.cum_results_bb[s.cum_results_bb.length - 1])) + ' bb' : BB() ? signed(r1(s.winnings_bb[s.winnings_bb.length - 1])) + ' bb' : signed(s.total_pl)) : '–'));
+    const sub = fmt !== 'cash' ? `${s.hands} hand${s.hands === 1 ? '' : 's'} saved${fmt === 'tournament' ? ' from tournaments' : ', cash and tournaments together'}. Tournament hands are measured in big blinds.`
+      : hasSess
       ? `${s.session_pl.length} finished session${s.session_pl.length === 1 ? '' : 's'}, ${s.hands} hand${s.hands === 1 ? '' : 's'} saved.`
       : 'Finish a session (click the session button, then enter your balance) to see your result.';
     hero.appendChild(el('div', 'sub', sub));
@@ -457,10 +465,25 @@
     tbl('By street', ['Street', 'Hands', 'Net chips', 'Net bb'], s.by_street.map(p => [p.name, p.hands, signed(p.net), signed(r1(p.net_bb))]));
   }
 
+  function tourneyCard(root, t) {
+    const c = el('div', 'an-card'); c.appendChild(el('h3', null, 'Tournaments'));
+    c.appendChild(el('p', 'desc', 'Entries, prizes and finishing places, in money. These never mix into your cash results.'));
+    const roi = t.roi == null ? 'n/a' : (t.roi * 100).toFixed(0) + '%';
+    const tile = (label, val) => { const d = el('div', 'tile'); d.appendChild(el('div', 'v', val)); d.appendChild(el('div', 'k', label)); return d; };
+    const grid = el('div', 'tiles');
+    [['Played', t.count], ['Entries', num(t.entries)], ['Prizes', num(t.prizes)], ['Net', signed(t.net)], ['ROI', roi], ['Cashed', t.cashes + ' of ' + t.count],
+     ['Wins', t.wins], ['Final tables', t.final_tables], ['Average finish', pct(t.avg_place_pct, 0) + ' up the field']].forEach(([l, v]) => grid.appendChild(tile(l, String(v))));
+    c.appendChild(grid);
+    const tbl = el('table'); const hr = el('tr'); ['Finished', 'Level', 'Place', 'Entry', 'Prize'].forEach(h => hr.appendChild(el('th', null, h)));
+    const th = el('thead'); th.appendChild(hr); tbl.appendChild(th); const tb = el('tbody');
+    t.recent.slice().reverse().forEach(r => { const tr = el('tr'); [r.label, r.stake, r.place + ' of ' + r.size, num(r.entry), num(r.prize)].forEach(v => tr.appendChild(el('td', null, String(v)))); tb.appendChild(tr); });
+    tbl.appendChild(tb); const sc = el('div', 'scroll'); sc.appendChild(tbl); const tw = el('div', 'an-tables'); tw.style.marginTop = '12px'; tw.appendChild(sc); c.appendChild(tw); c.style.marginBottom = '14px'; root.appendChild(c);
+  }
+
   async function load() {
     const root = $('anRoot'); root.classList.add('loading');
     try {
-      last = await (await fetch('/api/analytics' + (stake != null ? '?stake=' + encodeURIComponent(stake) : ''))).json();
+      last = await (await fetch('/api/analytics?fmt=' + encodeURIComponent(fmt) + (stake != null ? '&stake=' + encodeURIComponent(stake) : ''))).json();
       build(last);
     } finally { root.classList.remove('loading'); }
   }
