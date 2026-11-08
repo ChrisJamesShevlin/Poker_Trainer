@@ -411,6 +411,7 @@ function renderControls(){
     const need=S&&S.hero_stack<S.bb&&!S.chip_mode;
     const row=document.createElement('div');row.className='actions';
     row.innerHTML=need?`<span>You are out of chips.</span><button class="btn" id="rebuy2">Rebuy ${fmt(Math.min(S.buy_in,S.bankroll))}</button><span class="dim">${fmt(S.bankroll)} left in your account</span>`
+      :(S&&S.mode==='tournament'&&!S.tourney)?`<span>You are not in a tournament yet.</span><span class="dim">Choose a level below and press Register, then deal.</span>`
       :(S&&S.tourney&&S.tourney.finished)?`<span>The tournament is over.</span><span class="dim">Register for another below.</span>`
       :`<button class="btn" id="deal">${S&&S.started?'Deal next hand':'Deal hand'}</button>${S&&S.chip_mode?'':'<button class="btn ghost" id="cashOut" title="Stand up: your stack goes back into your account, and you see who you were playing">Cash out</button>'}<span class="dim">Stack ${S?fmt(S.hero_stack):''} &middot; keyboard: space = deal</span>`;
     c.appendChild(row);
@@ -421,6 +422,7 @@ function renderControls(){
   const L=S.legal,T=S.for_tool;
   const tool=document.createElement('div');tool.className='tool';
   tool.innerHTML=`<div class="t">For the RTA</div>Seat <b>${T.position}</b> &middot; Pot <b>${fmt(T.pot)}</b> &middot; Bet to call <b>${fmt(T.to_call)}</b> &middot; Opponents <b>${T.opponents}</b>`
+    +` &middot; Big blind <b>${fmt(S.bb)}</b> &middot; Your stack <b>${fmt(T.stack)}</b> &middot; Table size <b>${S.seats.filter(x=>!x.empty&&!x.out).length}</b>`
     +(T.bettor?` &middot; ${S.street==='preflop'?'Raise':'Bet'} by <b>${T.bettor}</b> to <b>${fmt(T.bet_to)}</b>`:'')
     +(T.preflop_raiser&&S.street!=='preflop'?` &middot; Preflop raiser <b>${T.preflop_raiser}</b>`:'');
   c.appendChild(tool);
@@ -487,7 +489,7 @@ function renderLobby(){
     b.onclick=()=>run(async()=>{await applyResponse(await api('/api/trainer/settings',{currency:sym}));CFG=await api('/api/trainer/config');render()});cs.appendChild(b)});
   const tour=S.mode==='tournament';
   document.querySelector('table.lobby thead tr').innerHTML=tour?'<th>Level</th><th>Entry</th><th>Prize pool</th><th>Structure</th>':'<th>Stakes</th><th>Buy-in</th><th>Players</th><th>Table</th>';
-  $('buyLbl').closest('.field').style.display=tour?'none':'';$('stackIn').closest('.field').style.display=tour?'none':'';
+  ['buyIn','buyMin','buyMax'].forEach(id=>$(id).style.display=tour?'none':'');$('stackIn').closest('.field').style.display=tour?'none':'';      // (the Register button sits in the same row, so it stays)
   if(tour){$('acctHdr').textContent='Your account (shared with cash)';$('acctLine').innerHTML=`<b>${money(S.grind_account)}</b> in your account. The entry comes out of it and the prize goes back in.`}
   const tb=$('lobby');tb.innerHTML='';
   CFG.stakes.forEach(s=>{
@@ -501,8 +503,8 @@ function renderLobby(){
     tb.appendChild(tr);
   });
   const st=CFG.stakes.find(x=>x.key===sel.stake);
-  $('buyLbl').textContent=`Buy-in (${st.buy_in})`;
-  $('tierText').textContent=st.tier_text;
+  $('buyLbl').textContent=tour?`Entry (${st.entry})`:`Buy-in (${st.buy_in})`;
+  if(tour)$('tierText').innerHTML=`Everyone starts with the same chips: <b>${st.structure}</b>. Entry ${st.entry}, prize pool ${st.prize_pool}. In a hand, the "For the RTA" box gives the big blind, your stack and the other numbers to type into the RTA (all in chips).`;else $('tierText').textContent=st.tier_text;
   const bi=$('buyIn');if(document.activeElement!==bi)bi.value=(sel.buy_in/100).toFixed(2);
   $('buyMin').onclick=()=>{sel.buy_in=st.buy_in_min;bi.value=(sel.buy_in/100).toFixed(2)};
   $('buyMax').onclick=()=>{sel.buy_in=Math.min(st.buy_in_max,S.account);bi.value=(sel.buy_in/100).toFixed(2)};

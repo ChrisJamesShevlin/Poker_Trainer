@@ -324,3 +324,23 @@ def test_chips_still_add_up_with_antes_at_a_high_stake():
             t.hero_act("check" if L["can_check"] else "call" if L["to_call"] <= 3 * t.bb else "fold")
         assert sum(p["stack"] for p in f["players"].values()) == total
     assert t.tourney["level"] >= 3 and any(lv[2] for lv in t.tourney["levels"][:t.tourney["level"] + 1])        # it got to the antes
+
+
+def test_you_cannot_deal_in_tournament_mode_before_registering():
+    import server
+    c = server.app.test_client()
+    import tempfile, pathlib
+    from pokercalc import store
+    d = pathlib.Path(tempfile.mkdtemp()) / "t.db"
+    server_db = server.db
+    try:
+        server.db = lambda: store.connect(d)
+        for name in ("_table", "_practice", "_tourney", "_mode"):
+            setattr(server, name, None)
+        c.post("/api/trainer/settings", json={"mode": "tournament"})
+        r = c.post("/api/trainer/deal", json={})
+        assert r.status_code == 403 and "Register" in r.get_json()["error"]
+    finally:
+        server.db = server_db
+        for name in ("_table", "_practice", "_tourney", "_mode"):
+            setattr(server, name, None)

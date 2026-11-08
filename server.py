@@ -546,6 +546,8 @@ def trainer_reset():
 def trainer_deal():
     with _lock:
         t = trainer_table()
+        if casino_mode() == "tournament" and (t.tourney is None or t.tourney["finished"]):
+            return _refuse("Register for a tournament first (choose a level below and press Register).")
         notice = enforce_account(t) if casino_mode() == "grind" else None     # busted: a fresh starter balance; short of the cushion: moved down
         note = enforce_settings(t)               # (after a move down, the new level's settings too)
         notice = " ".join(x for x in (notice, note) if x) or None
