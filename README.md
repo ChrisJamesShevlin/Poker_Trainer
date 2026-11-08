@@ -72,7 +72,7 @@ RTA can stay open in one browser window and the Casino in another.
   broken), and the last six play the final table. The top five are paid, top-heavy. The entry fee comes out of the same account
   as cash and the prize goes back into it, and tournaments have their own
   ladder, separate from the cash levels (shown on the Grinding page): to clear a level, finish in the money twice (three times above the three lowest levels), play at least 8 tournaments there and be in profit
-  there (prizes at least equal to the entries), so you can climb without playing any cash, and there is a badge group for the ladder. Only tournaments played in the Casino count, and the entry
+  there (prizes at least equal to the entries; up to NL200 a loss of no more than one entry is allowed), so you can climb without playing any cash, and there is a badge group for the ladder. Only tournaments played in the Casino count, and the entry
   just has to fit your account. The bots play a cash-game style, so they are not tournament experts and the RTA's advice ignores the prize structure.
 - Game speed (Instant / Fast / Normal / Slow): the other players take a moment to act, like an online table. Each bot has
   its own tempo, many folds are snap folds, big decisions take longer and now and then someone tanks. The seat that is

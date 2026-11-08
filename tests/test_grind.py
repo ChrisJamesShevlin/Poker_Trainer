@@ -997,7 +997,7 @@ def test_the_tournament_levels_have_their_own_ladder_and_start_locked(client):
     cfg = client.get("/api/trainer/config").get_json()
     assert cfg["mode"] == "tournament" and [r["locked"] for r in cfg["stakes"]] == [False] + [True] * (len(KEYS) - 1)
     assert cfg["stakes"][0]["entry"] == "£2" and cfg["stakes"][0]["prize_pool"] == "£72"                      # 36 entries of £2
-    assert cfg["stakes"][1]["lock_text"] == "NL5 tournaments are locked: at NL2 you need 2 in-the-money finishes, a profit and 8 tournaments played (0 in the money, 0 played, +£0 so far)."
+    assert cfg["stakes"][1]["lock_text"] == "NL5 tournaments are locked: at NL2 you need 2 in-the-money finishes, a result no worse than one lost entry and 8 tournaments played (0 in the money, 0 played, +£0 so far)."
     r = client.post("/api/tourney/register", json={"stake": KEYS[3]})
     assert r.status_code == 403 and "NL25 tournaments are locked" in r.get_json()["error"]
     assert client.get("/api/trainer/state").get_json()["tourney"] is None
@@ -1051,13 +1051,41 @@ def test_clearing_a_tournament_level_needs_the_cashes_a_profit_and_enough_played
     assert grind.summary(server.db())["levels"][0]["status"] == "current"                              # and the cash ladder has not moved
 
 
-def test_a_loss_overall_keeps_a_level_locked_even_with_the_cashes_and_games(client):
+def test_up_to_the_mid_levels_a_loss_of_one_entry_is_allowed_but_not_more(client):
     to_tournament(client)
     fill_level(KEYS[0], 2, 8, prize=300)                                                               # 2 cashes of 3.00 against eight 2.00 entries: -10.00
     st = client.get("/api/trainer/config").get_json()["stakes"]
-    assert st[1]["locked"] is True and st[0]["tnet"] == "-£10" and "profit" in st[1]["lock_text"]
-    fill_level(KEYS[0], 1, 1, prize=2000)                                                              # a 20.00 cash puts it back in profit
+    assert st[1]["locked"] is True and st[0]["tnet"] == "-£10" and "one lost entry" in st[1]["lock_text"]
+    fill_level(KEYS[0], 1, 1, prize=2000)                                                              # a 20.00 cash: now +£8 overall
     assert client.get("/api/trainer/config").get_json()["stakes"][1]["locked"] is False
+
+
+def test_the_exact_edge_of_the_allowed_loss(client):
+    for prize, unlocked in ((700, True), (699, False)):                                                # -2.00 (exactly one entry) is fine, -2.02 is not
+        c = server.db()
+        c.execute("DELETE FROM tournaments")
+        c.commit()
+        fill_level(KEYS[0], 2, 8, prize=prize)
+        assert (grind.summary(server.db())["tourney_levels"][1]["status"] != "locked") is unlocked
+
+
+def test_the_high_levels_need_a_real_profit(client):
+    for i, k in enumerate(KEYS[:7]):                                                                   # micro and mid levels cleared with big prizes
+        fill_level(k, 2 if i < 3 else 3, 8, prize=3000 if i < 1 else 30000)
+    tl = grind.summary(server.db())["tourney_levels"]
+    assert tl[7]["status"] == "current" and stakes.STAKES[KEYS[7]]["tier"] == "high"
+    c = server.db()
+    entry = stakes.buy_in_range(KEYS[7])[1]
+    for i in range(8):                                                                                 # 3 cashes in 8 at the first high level, one entry short of even
+        pr = (8 * entry - entry) // 3 + 1 if i < 3 else 0
+        c.execute("INSERT INTO tournaments(ts,stake,place,size,buy_in,prize,hands,knockouts,level,final_table,heads_up,min_bb,table_moves,sharks,source,bb) "
+                  "VALUES(strftime('%s','now'),?,?,36,?,?,60,1,5,1,0,8,2,4,'casino',?)", (KEYS[7], 3 if i < 3 else 20, entry, pr, 0.5))
+    c.commit()
+    assert grind.summary(server.db())["tourney_levels"][8]["status"] == "locked"                       # a loss of one entry is not enough up here
+    c.execute("INSERT INTO tournaments(ts,stake,place,size,buy_in,prize,hands,knockouts,level,final_table,heads_up,min_bb,table_moves,sharks,source,bb) "
+              "VALUES(strftime('%s','now'),?,2,36,?,?,60,1,5,1,0,8,2,4,'casino',?)", (KEYS[7], entry, entry * 3, 0.5))
+    c.commit()
+    assert grind.summary(server.db())["tourney_levels"][8]["status"] == "current"
 
 
 def test_missing_the_money_and_real_site_results_do_not_unlock_anything(client):

@@ -62,7 +62,8 @@ def structure(stake):
 
 # ---- the tournament ladder: its own progression, separate from the cash levels. To clear a level (and unlock the next) you need, at that
 # level, enough in-the-money finishes (twice at the three lowest, three times above), a profit (prizes at least equal to the entries you paid
-# there) and enough tournaments played (so a couple of lucky results cannot carry you). A player who only plays tournaments can climb.
+# there; at the micro and mid levels a loss of up to one entry fee is allowed, above that you must be ahead) and enough tournaments played
+# (so a couple of lucky results cannot carry you). A player who only plays tournaments can climb.
 # Only tournaments played in the Casino count (a result you typed in from a real site never unlocks anything).
 LADDER_MIN_PLAYED = 8
 
@@ -91,7 +92,8 @@ def ladder(rows, name_fn=None, cur="$"):
         if r["prize"] > 0:
             cashes[k] = cashes.get(k, 0) + 1
         best[k] = min(best.get(k, 10 ** 9), r["place"])
-    cleared = lambda i, k: (cashes.get(k, 0) >= ladder_need(i, n) and played.get(k, 0) >= LADDER_MIN_PLAYED and net.get(k, 0) >= 0)
+    slack = lambda k: stakes.buy_in_range(k)[1] if stakes.STAKES[k]['tier'] in ('micro', 'mid') else 0        # the loss allowed up to the mid levels
+    cleared = lambda i, k: (cashes.get(k, 0) >= ladder_need(i, n) and played.get(k, 0) >= LADDER_MIN_PLAYED and net.get(k, 0) >= -slack(k))
     current = next((i for i, k in enumerate(keys[:-1]) if not cleared(i, k)), n - 1)
     out = []
     for i, k in enumerate(keys):
@@ -100,7 +102,7 @@ def ladder(rows, name_fn=None, cur="$"):
         out.append({"key": k, "name": name_fn(k) if name_fn else stakes.blinds_text(k, cur), "blinds": stakes.blinds_text(k, cur),
                     "status": "cleared" if i < current else "current" if i == current else "locked",
                     "need": ladder_need(i, n), "cashes": cashes.get(k, 0), "played": played.get(k, 0), "min_played": LADDER_MIN_PLAYED,
-                    "net_raw": net.get(k, 0), "net": _signed_money(net.get(k, 0), cur), "best": best.get(k),
+                    "net_raw": net.get(k, 0), "net": _signed_money(net.get(k, 0), cur), "net_floor": -slack(k), "best": best.get(k),
                     "entry": stakes.money(fee, cur), "entry_raw": fee,
                     "chips": f"{sc['start_chips']:,} chips ({sc['start_chips'] // sc['levels'][0][1]}bb)"})
     return out
@@ -111,7 +113,8 @@ def ladder_locked_message(levels, key, account, cur="$"):
     lv = next(x for x in levels if x["key"] == key)
     if lv["status"] == "locked":
         now = next(x for x in levels if x["status"] == "current")
-        return (f"{lv['name']} tournaments are locked: at {now['name']} you need {now['need']} in-the-money finishes, a profit and "
+        need_net = "a result no worse than one lost entry" if now["net_floor"] else "a profit"
+        return (f"{lv['name']} tournaments are locked: at {now['name']} you need {now['need']} in-the-money finishes, {need_net} and "
                 f"{now['min_played']} tournaments played ({now['cashes']} in the money, {now['played']} played, {now['net']} so far).")
     if account < lv["entry_raw"]:
         return f"The entry is {lv['entry']} and you have {stakes.money(account, cur)}."
