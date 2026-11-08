@@ -75,6 +75,8 @@ CALL = {
     "SB": expand("77-TT, ATs+, KQs, QJs, JTs, AQo"),
     "BB": expand("22-TT, A2s+, K5s+, Q7s+, J8s+, T8s+, 97s+, 86s+, 75s+, 65s, 54s, ATo+, KTo+, QTo+, JTo"),
 }
+# Against an UTG/HJ raiser, offsuit broadway hands other than AQo are usually dominated (AK, AQ, KK, QQ ...): they fold. (They still call against later raisers.)
+DOMINATED_OFFSUIT = expand("KQo, KJo, KTo, QJo, QTo, JTo, AJo, ATo")
 # Facing a BIG raise (about 4-12bb, usually a 3-bet): re-raise only the top, call a tighter slice
 FOURBET = expand("QQ+, AKs, AKo")
 BIG_CONTINUE_PCT = {"UTG": 5, "HJ": 5, "CO": 6, "BTN": 7, "SB": 5, "BB": 8}   # top X% of hands
@@ -217,6 +219,7 @@ def advise(hole, position, stack_bb, facing_raise, size_tier="normal", raise_bb=
             pairs = {c for c in call if len(c) == 2 and c[0] in "23456"}      # small pairs call to set-mine, whatever their rank (when deep)
             order = [c for c in ranking() if c in call]
             call = set(order[: math.ceil(len(order) * 0.7)]) | (pairs if band == "deep" else set())
+            call -= DOMINATED_OFFSUIT                       # offsuit broadways (KQo, KJo...) are mostly dominated by an early raiser's range: fold
         if position == "SB" and early:
             three_bet, call = SB_VS_EARLY, set()
         else:
