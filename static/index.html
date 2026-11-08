@@ -525,29 +525,6 @@ function finish(sign){
 }
 $('resetNums').onclick=()=>{['pot','bbIn','stack'].forEach(id=>$(id).value='');store.set('bb','');store.set('stack','');startStack=null;contrib=0;waiting=false;renderAll();schedule()};
 $('wonBtn').onclick=()=>finish(1);$('lostBtn').onclick=()=>finish(-1);$('clearBtn').onclick=()=>clearHand(true);
-
-/* ---------- fit the Hand tab to the window: no scroll bars, whatever the window size ---------- */
-(function(){
-  const body=document.body;let timer=null;
-  function overflow(){const d=document.documentElement;return {h:d.scrollHeight-d.clientHeight,w:d.scrollWidth-d.clientWidth}}
-  function fit(){
-    const hand=document.getElementById('hand');
-    body.style.zoom=1;
-    if(!hand||hand.classList.contains('hidden')||window.innerHeight<420)return;       // (Analytics scrolls as normal)
-    let z=1;
-    for(let i=0;i<6;i++){
-      const d=document.documentElement,o=overflow();
-      if(o.h<=0&&o.w<=0)break;
-      const kh=o.h>0?d.clientHeight/d.scrollHeight:1,kw=o.w>0?d.clientWidth/d.scrollWidth:1;
-      z=Math.max(0.5,z*Math.min(kh,kw)*0.995);body.style.zoom=z;
-    }
-  }
-  const later=()=>{clearTimeout(timer);timer=setTimeout(fit,80)};
-  window.addEventListener('resize',later);
-  document.addEventListener('click',later);
-  new MutationObserver(later).observe(document.getElementById('hand'),{childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:['class','value']});
-  window.refitScreen=fit;fit();
-})();
 buildControls();renderAll();loadSession().then(()=>{prefillPot();renderAll();schedule()});
 </script>
 </body>
