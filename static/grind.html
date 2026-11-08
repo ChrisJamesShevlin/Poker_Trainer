@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Grinding</title>
+<link rel="stylesheet" href="/static/chips.css">
+<style>
+:root{
+  --bg:#0e1318; --panel:#171f27; --panel2:#1f2933; --line:#2b3947; --text:#e8eef4; --dim:#8da0b3;
+  --good:#22c55e; --bad:#ef4444; --blue:#3b82f6; --amber:#f59e0b;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow-x:hidden}
+header{display:flex;align-items:center;gap:12px;padding:10px 18px;min-height:56px;box-sizing:border-box;border-bottom:1px solid var(--line);background:var(--panel);flex-wrap:wrap}
+header h1{font-size:16px;margin:0;font-weight:650}
+header a{color:var(--dim);text-decoration:none;font-size:13.5px}header a:hover{color:var(--text)}
+main{max-width:860px;margin:0 auto;padding:16px}
+.dim{color:var(--dim)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:16px}
+.card h2{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);margin:0 0 10px;font-weight:600}
+.note{font-size:12.5px;color:var(--dim);margin-top:8px}
+.summary{display:flex;gap:10px;flex-wrap:wrap}
+.stat{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px 14px;min-width:110px}
+.stat b{display:block;font-size:20px}.stat span{font-size:12px;color:var(--dim)}
+/* the path */
+.path{position:relative;margin:0;padding:0;list-style:none}
+.path::before{content:"";position:absolute;left:27px;top:20px;bottom:20px;width:3px;background:var(--line);border-radius:2px}
+.node{position:relative;display:flex;gap:14px;margin-bottom:14px}
+.dot{flex:0 0 56px;height:56px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:24px;background:var(--panel2);border:3px solid var(--line);z-index:1}
+.node.cleared .dot{border-color:var(--good);background:#14532d}
+.node.current .dot{border-color:var(--amber);background:#713f12;box-shadow:0 0 0 4px #f59e0b33}
+.node.locked{opacity:.55}
+.body{flex:1;min-width:0;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.node.current .body{border-color:var(--amber)}
+.top{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.top b{font-size:17px}
+.tag{font-size:11.5px;border-radius:6px;padding:1px 8px;font-weight:600;background:var(--panel2);border:1px solid var(--line)}
+.tag.cleared{background:#14532d;color:#bbf7d0;border-color:#14532d}.tag.current{background:#713f12;color:#fde68a;border-color:#713f12}
+.mix{font-size:12.5px;color:var(--dim);margin:4px 0 8px}
+.bars{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px 16px}
+.bar .lab{display:flex;justify-content:space-between;font-size:12.5px;color:var(--dim)}
+.bar .lab b{color:var(--text);font-weight:600}
+.track{height:7px;border-radius:4px;background:var(--panel2);margin-top:3px;overflow:hidden}
+.fill{height:100%;background:var(--blue);border-radius:4px}.ok .fill{background:var(--good)}
+.ok .lab b{color:#86efac}
+.actions{margin-top:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+button{background:var(--blue);border:0;color:#fff;padding:7px 14px;border-radius:8px;font:inherit;font-size:13.5px;cursor:pointer}
+button:hover{filter:brightness(1.1)}
+button.danger{background:transparent;border:1px solid #7f1d1d;color:#fca5a5}
+/* badges */
+.badges{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px}
+.badge{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:10px;text-align:center}
+.badge.earned{border-color:var(--amber)}.badge.earned .ic{filter:none;opacity:1}
+.newtag{background:#ef4444;color:#fff;border-radius:6px;padding:1px 7px;font-size:11px;font-weight:700;letter-spacing:.04em;margin-left:6px}
+.badge .newtag{position:absolute;top:6px;right:6px;margin:0}.badge{position:relative}
+.bsec{margin-bottom:12px}.bsec summary{cursor:pointer;font-weight:600;margin-bottom:8px}.bsec summary .dim{font-weight:400;font-size:13px;margin-left:6px}
+.badges{grid-template-columns:repeat(auto-fill,minmax(270px,1fr))}
+.badge{display:flex;gap:12px;align-items:center;text-align:left}.badge .bt{min-width:0;flex:1}
+.badge.gold{border-color:#facc15;box-shadow:0 0 18px #facc1533}
+.badge em{font-style:normal;font-size:11px;color:var(--dim);display:block;margin-top:2px}
+.r-Uncommon{color:#4ade80!important}.r-Rare{color:#60a5fa!important}.r-Epic{color:#c084fc!important}.r-Legendary{color:#fbbf24!important}.r-Mythic{color:#22d3ee!important}.r-Solidgold{color:#facc15!important}
+.badge .track{margin-top:5px}.pg{font-size:11.5px;color:var(--dim);margin-top:2px}
+.chiphero{display:flex;gap:16px;align-items:center;background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:14px}
+.chiphero.done{border-color:#facc15;box-shadow:0 0 22px #facc1544}.chiphero b{font-size:16px}.chiphero span{display:block;font-size:13px;color:var(--dim);margin:2px 0 8px}
+.badge b{display:block;font-size:13.5px;margin-top:2px}
+.badge span{display:block;font-size:11.5px;color:var(--dim);line-height:1.3}
+#toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#7f1d1d;color:#fff;padding:10px 16px;border-radius:10px;display:none;max-width:90vw}
+</style>
+</head>
+<body>
+<header>
+  <h1>Grinding</h1>
+  <a href="/trainer" target="_blank" title="Play against the bots in another tab">Casino &#8599;</a>
+  <a href="/" target="_blank" title="Open the RTA in another tab">RTA &#8599;</a>
+  <a href="/#analytics" title="Your results across stakes">Analytics</a>
+  <button id="resetBtn" class="danger" style="margin-left:auto" title="Start the ladder again from NL2">Reset progress</button>
+</header>
+<main>
+  <div class="card"><h2>Your climb</h2><div class="summary" id="summary"></div>
+    <div class="note" id="rules"></div></div>
+  <div class="card"><h2>The path: NL2 to NL100,000</h2><ol class="path" id="path"></ol></div>
+  <div class="card"><h2>Badges and achievements</h2><div id="badges"></div></div>
+  <div class="note" style="margin-bottom:30px">Beating bots is practice, not proof that you beat real people. A win rate over a few thousand hands
+    is still mostly luck, which is why each level shows its margin of error. The targets are our own starting numbers (edit RULES in
+    pokercalc/grind.py). Hands at other levels, or at tables softer than a level asks for, do not count towards it.</div>
+</main>
+<div id="toast"></div>
+<script>
+const $=id=>document.getElementById(id);
+const ICON={Puddle:'💧',Poseidon:'🔱',Pond:'🐟',Creek:'🦆',River:'🐠',Lake:'🦢',Bay:'😎',Reef:'🐢',"Deep Water":'🦑',"Open Sea":'🐋',Trench:'🦈',Abyss:'🐙',Leviathan:'🐉',Apex:'👑',Kraken:'🦞'};
+const MIL={'sat-down':'🪑','hands-1k':'🎯','hands-5k':'🔥','hands-10k':'💯','hot-streak':'⚡','century':'💰','climber':'🧗','halfway':'⛰️','hard-mode':'🛡️','summit':'🏆'};
+const STR={loose:'any table',balanced:'balanced or hard tables',hard:'hard tables only'};
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function toast(m){const t=$('toast');t.textContent=m;t.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(()=>t.style.display='none',5000)}
+function bar(label,val,text,frac,ok){
+  return `<div class="bar ${ok?'ok':''}"><div class="lab"><span>${label}</span><b>${text}</b></div><div class="track"><div class="fill" style="width:${Math.max(0,Math.min(1,frac))*100}%"></div></div></div>`;
+}
+function node(L,G){
+  const c=L.checks||{},started=L.hands>0;
+  const pl=(n,w)=>`${n} ${w}${n==1?'':w==='fish'?'':'s'}`;
+  const mix=`Typical table: 🦈 ${pl(L.mix.shark,'shark')} &middot; 😎 ${pl(L.mix.rec,'rec')} &middot; 🐟 ${pl(L.mix.fish,'fish')} &middot; 🐋 ${pl(L.mix.whale,'whale')}`;
+  let bars='';
+  if(L.status!=='locked'){
+    if(L.status==='current'||L.status==='locked')bars+=bar(`Account (${L.need} to play here)`,G.account_raw,`${G.account} / ${L.need}`,G.account_raw/L.need_raw,L.money_ok);
+    bars+=bar('Hands',L.hands,`${L.hands.toLocaleString()} / ${L.need_hands.toLocaleString()}`,L.hands/L.need_hands,c.hands);
+    const wr=L.bb100,frac=wr==null?0:wr/L.target;
+    bars+=bar(`Win rate (target ${L.target} bb/100)`,wr,wr==null?'-':`${wr>0?'+':''}${wr} &plusmn; ${L.margin}`,frac,c.winrate);
+    bars+=bar(`VPIP (${G.vpip_range[0]}-${G.vpip_range[1]}%)`,L.vpip,L.vpip==null?'-':L.vpip+'%',L.vpip==null?0:1,c.vpip);
+    bars+=bar(`RTA decisions logged (${L.need_rta})`,L.rta_decisions,`${L.rta_decisions} / ${L.need_rta}`,L.rta_decisions/L.need_rta,c.rta_n);
+    bars+=bar(`Followed its advice (at least ${L.need_follow}%)`,L.rta_follow,L.rta_follow==null?'-':L.rta_follow+'%',L.rta_follow==null?0:L.rta_follow/L.need_follow,c.rta_follow);
+    bars+=bar(`PFR (at least ${G.min_pfr}%)`,L.pfr,L.pfr==null?'-':L.pfr+'%',L.pfr==null?0:L.pfr/G.min_pfr,c.pfr);
+  }
+  const tag=L.status==='cleared'?'Cleared':L.status==='current'?'You are here':'Locked';
+  const act=L.status==='current'?`<div class="actions"><button data-stake="${esc(L.key)}" data-min="${L.min_strength}">Sit at this level</button><span class="dim" style="font-size:12.5px">Players are set for you (${L.min_strength.replace('_',' ')} tables). 30 buy-ins here = ${esc(L.bankroll)}.</span></div>`
+    :L.status==='locked'?`<div class="note">Clear the level above first, then you need ${esc(L.need)} in your account.</div>`:'';
+  return `<li class="node ${L.status}"><div class="dot">${chipHtml(L.chip,L.chip_text,{size:42,locked:L.status!=='cleared'})}</div><div class="body">
+    <div class="top"><b>${esc(L.name)}</b><span class="dim">${esc(L.blinds)}</span><span class="tag ${L.status}">${tag}</span>${L.new?'<span class="newtag">NEW</span>':''}${L.unlocked_new?'<span class="newtag">NEW: UNLOCKED</span>':''}<span class="tag">${esc(L.badge)}</span></div>
+    <div class="mix">${mix}</div><div class="bars">${bars}</div>${act}</div></li>`;
+}
+function chipHtml(value,text,o={}){
+  const t=o.secret?'?':text;
+  return `<div class="chip v${value} l${t.length}${o.locked?' locked':''}" style="--size:${o.size||60}px"><span>${esc(t)}</span></div>`;
+}
+function badgeEl(b){
+  const hidden=b.secret&&!b.earned;
+  const prog=b.goal>1&&!b.earned?`<div class="track"><div class="fill" style="width:${100*b.progress/b.goal}%"></div></div><div class="pg">${b.progress.toLocaleString()} / ${b.goal.toLocaleString()}</div>`:'';
+  return `<div class="badge ${b.earned?'earned':''} ${b.chip>=1000000?'gold':''}" title="${esc(hidden?b.hint:b.text)}">${b.new?'<span class="newtag">NEW</span>':''}
+    ${chipHtml(b.chip,b.chip_text,{size:56,locked:!b.earned,secret:hidden})}
+    <div class="bt"><b>${hidden?'Secret badge':esc(b.name)}</b><span>${hidden?'Hint: '+esc(b.hint):esc(b.text)}</span>
+    <em class="rar r-${b.rarity.replace(' ','')}">${esc(b.rarity)}${b.secret&&b.earned?' &middot; secret':''}</em>${prog}</div></div>`;
+}
+function renderBadges(G){
+  const all=G.badges,comp=all.find(b=>b.id==='completionist');
+  const sec=(title,list,open)=>{const got=list.filter(b=>b.earned).length;open=open||list.some(b=>b.new);      // a section with a new badge is open
+    return `<details ${open?'open':''} class="bsec"><summary>${esc(title)} <span class="dim">${got} / ${list.length}</span></summary><div class="badges">${list.map(badgeEl).join('')}</div></details>`};
+  const hero=`<div class="chiphero ${comp.earned?'done':''}">${chipHtml(comp.chip,comp.chip_text,{size:84,locked:!comp.earned})}<div><b>${comp.earned?'100% COMPLETE: you hold the solid gold chip':'100% Completionist'}</b>
+    <span>${esc(comp.text)}</span><div class="track" style="max-width:340px"><div class="fill" style="width:${100*comp.progress/comp.goal}%"></div></div>
+    <div class="pg">${comp.progress} / ${comp.goal} badges &middot; chip stack <b>$${G.chips.toLocaleString()}</b> of $${G.chips_all.toLocaleString()}</div></div></div>`;
+  let h=hero;
+  G.group_order.filter(g=>g!=='Completionist').forEach(g=>{const l=all.filter(b=>b.group===g);if(l.length)h+=sec(g,l,g==='Getting started'||g==='Levels')});
+  $('badges').innerHTML=h;
+}
+async function load(){
+  const G=await (await fetch('/api/grind')).json();
+  $('summary').innerHTML=[[G.account,'account'+(G.reloads?` (${G.reloads} reload${G.reloads>1?'s':''})`:'')],[G.cleared+' / '+G.levels.length,'levels cleared'],[G.total_hands.toLocaleString(),'hands played'],[G.sessions,'sessions'],
+    [G.badges.filter(b=>b.earned).length+' / '+G.badges.length,'badges']].map(([a,b])=>`<div class="stat"><b>${a}</b><span>${b}</span></div>`).join('');
+  $('rules').textContent=`To clear a level you need the hands, the win rate, a VPIP of ${G.vpip_range[0]}-${G.vpip_range[1]}% and a PFR of at least ${G.min_pfr}%, plus enough decisions logged in the RTA at this level's blinds and a high share of them matching its advice. It is checked every ${G.check_every} hands once you have the minimum.`+
+    (G.too_easy?` ${G.too_easy.toLocaleString()} hands did not count because the table was softer than the level asks for.`:'');
+  $('path').innerHTML=G.levels.map(L=>node(L,G)).join('');
+  renderBadges(G);
+  document.querySelectorAll('button[data-stake]').forEach(btn=>btn.onclick=async()=>{
+    const r=await fetch('/api/trainer/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'grind',stake:btn.dataset.stake})});
+    const d=await r.json();
+    if(!r.ok){toast(d.error||'Could not sit at that level');return}
+    window.open('/trainer','_blank');
+  });
+}
+$('resetBtn').onclick=async()=>{
+  if(!confirm('Reset all Grinding progress?\n\nThis sends your levels, badges and Casino account back to the start (the starter balance at NL2).\nYour saved hands and your Analytics are NOT touched.'))return;
+  const r=await fetch('/api/grind/reset',{method:'POST'});const d=await r.json();
+  if(!r.ok){toast(d.error||'Could not reset');return}
+  load();
+};
+load();
+</script>
+</body>
+</html>

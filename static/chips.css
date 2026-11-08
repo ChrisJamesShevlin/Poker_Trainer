@@ -1,0 +1,19 @@
+/* Poker chips for badges: the colour is the value (like a casino rack), and the solid gold one is the 100% completionist. */
+.chip{--c:#f3f4f6;--s:#2563eb;--t:#1e3a8a;--size:64px;width:var(--size);height:var(--size);border-radius:50%;position:relative;display:inline-grid;place-items:center;flex:none;
+  background:repeating-conic-gradient(var(--s) 0 20deg,var(--c) 20deg 60deg);box-shadow:0 3px 8px #0009,inset 0 0 0 2px #0003;font-weight:800;line-height:1}
+.chip::before{content:"";position:absolute;inset:15%;border-radius:50%;background:var(--c);box-shadow:inset 0 0 0 2px var(--s),inset 0 -3px 6px #0003}
+.chip span{position:relative;color:var(--t);font-size:calc(var(--size)*.27);letter-spacing:-.02em}
+.chip.l4 span{font-size:calc(var(--size)*.22)}.chip.l5 span{font-size:calc(var(--size)*.19)}
+.chip.v1{--c:#f3f4f6;--s:#2563eb;--t:#1e3a8a}
+.chip.v5{--c:#dc2626;--s:#fff;--t:#fff}
+.chip.v25{--c:#16a34a;--s:#fff;--t:#fff}
+.chip.v100{--c:#1f2937;--s:#e5e7eb;--t:#fff}
+.chip.v500{--c:#7c3aed;--s:#fff;--t:#fff}
+.chip.v1000{--c:#eab308;--s:#fff;--t:#422006}
+.chip.v5000{--c:#92400e;--s:#fde68a;--t:#fff}
+.chip.v25000{--c:#db2777;--s:#fff;--t:#fff}
+.chip.v100000{--c:#0891b2;--s:#fff;--t:#fff}
+.chip.v1000000{background:conic-gradient(from 20deg,#fff2a8,#e5b800,#a67c00,#ffe680,#d4af37,#8a6a00,#fff2a8);box-shadow:0 0 16px #facc1599,0 3px 8px #0009,inset 0 0 0 2px #fff6}
+.chip.v1000000::before{background:radial-gradient(circle at 35% 30%,#fff1a0,#d4af37 55%,#8a6a00);box-shadow:inset 0 0 0 2px #fde68a,inset 0 -3px 6px #0004}
+.chip.v1000000 span{color:#5b4300;text-shadow:0 1px 0 #fff8}
+.chip.locked{filter:grayscale(1) brightness(.4);opacity:.75}
