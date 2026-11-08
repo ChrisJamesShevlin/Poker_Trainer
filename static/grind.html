@@ -122,10 +122,12 @@ function node(L,G){
 }
 function tnode(T,L){
   const tag=T.status==='cleared'?'Cleared':T.status==='current'?'You are here':'Locked';
-  const bars=T.status==='locked'?'':T.need?bar(`Finish in the money (top 5 of 36)`,T.cashes,`${T.cashes} / ${T.need}`,T.cashes/T.need,T.cashes>=T.need):`<div class="note">The top level: nothing more to unlock.</div>`;
+  const bars=T.status==='locked'?'':T.need?bar(`Finish in the money (top 5 of 36)`,T.cashes,`${T.cashes} / ${T.need}`,T.cashes/T.need,T.cashes>=T.need)
+    +bar(`Tournaments played (at least ${T.min_played})`,T.played,`${T.played} / ${T.min_played}`,T.played/T.min_played,T.played>=T.min_played)
+    +bar('Profit (prizes minus entries)',T.net_raw,T.net,T.net_raw>=0?1:0.3,T.net_raw>=0&&T.played>0):`<div class="note">The top level: nothing more to unlock.</div>`;
   const info=`<div class="mix">Entry ${esc(T.entry)} &middot; ${esc(T.chips)} &middot; ${T.played} played${T.best?` &middot; best finish ${T.best}`:''}</div>`;
   const act=T.status!=='locked'?`<div class="actions"><button data-tour="${esc(T.key)}">Play a tournament here</button></div>`
-    :`<div class="note">Finish in the money at the level above first.</div>`;
+    :`<div class="note">Clear the level above first.</div>`;
   return `<li class="node ${T.status}"><div class="dot">${chipHtml(L.chip,L.chip_text,{size:42,locked:T.status!=='cleared'})}</div><div class="body">
     <div class="top"><b>${esc(T.name)}</b><span class="dim">${esc(T.blinds)}</span><span class="tag ${T.status}">${tag}</span></div>${info}<div class="bars">${bars}</div>${act}</div></li>`;
 }
@@ -159,7 +161,7 @@ async function load(){
   $('rules').textContent=`To clear a level you need the hands, the win rate, a VPIP of ${G.vpip_range[0]}-${G.vpip_range[1]}% and a PFR of at least ${G.min_pfr}%, plus enough decisions logged in the RTA at this level's blinds and a high share of them matching its advice. It is checked every ${G.check_every} hands once you have the minimum.`+
     (G.too_easy?` ${G.too_easy.toLocaleString()} hands did not count because the table was softer than the level asks for.`:'');
   $('path').innerHTML=G.levels.map(L=>node(L,G)).join('');
-  $('tnote').textContent='Tournaments have their own ladder, separate from the cash levels. Finish in the money (top 5 of 36) twice at each of the three lowest levels and three times above to unlock the next one. You can climb it without playing any cash. Only tournaments played in the Casino count.';
+  $('tnote').textContent='Tournaments have their own ladder, separate from the cash levels. To unlock the next level, at each level you need to finish in the money (top 5 of 36) twice at the three lowest levels and three times above, play at least 8 tournaments there, and be in profit (prizes at least equal to your entries). You can climb it without playing any cash. Only tournaments played in the Casino count.';
   $('tpath').innerHTML=G.tourney_levels.map((T,i)=>tnode(T,G.levels[i])).join('');
   renderBadges(G);
   document.querySelectorAll('button[data-tour]').forEach(btn=>btn.onclick=async()=>{

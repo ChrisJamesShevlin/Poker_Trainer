@@ -49,7 +49,7 @@ CHIP_TEXT = {1: "$1", 5: "$5", 25: "$25", 100: "$100", 500: "$500", 1000: "$1K",
 RARITY = {1: "Common", 5: "Common", 25: "Uncommon", 100: "Rare", 500: "Epic", 1000: "Epic", 5000: "Legendary", 25000: "Legendary",
           100000: "Mythic", 1000000: "Solid gold"}
 LEVEL_CHIPS = [1, 5, 5, 25, 25, 100, 100, 500, 500, 1000, 1000, 5000, 5000, 25000, 100000]      # clearing a level, NL2 up to NL100,000
-GROUP_ORDER = ["Getting started", "Levels", "Pots", "Showdowns", "Bluffs", "All-ins", "Beat the sharks", "Big hands", "Endurance", "Tournaments", "RTA", "Secret"]
+GROUP_ORDER = ["Getting started", "Levels", "Pots", "Showdowns", "Bluffs", "All-ins", "Beat the sharks", "Big hands", "Endurance", "Tournaments", "Tournament ladder", "RTA", "Secret"]
 
 
 def _is_72_offsuit(hole):
@@ -411,6 +411,37 @@ def summary(con, cur="$"):
     bd(T, "tour-deep", "Deep stakes champion", f"Win a tournament at {level_name(keys[9])} or higher", 5000, 1 if win_idx >= 9 else 0)
     bd(T, "tour-nose", "Nosebleed champion", f"Win a tournament at {level_name(keys[12])} or higher", 25000, 1 if win_idx >= 12 else 0)
     bd(T, "tour-boss", "The final boss", f"Win a tournament at {level_name(keys[14])}, against a field of the strongest sharks", 100000, 1 if win_idx >= 14 else 0)
+
+    # ---- the tournament ladder: clearing levels, climbing, being in profit, consistency (only tournaments played in the Casino count)
+    TL = "Tournament ladder"
+    tl = mtt.ladder(tours, level_name, cur)
+    t_cleared = sum(1 for x in tl if x["status"] == "cleared")
+    tl_names = ["Fresh entry", "Early bird", "Regular", "Contender", "Bubble buster", "Money maker", "Deep runner", "Final tabler", "Chip leader",
+                "Closer", "Heater", "High roller", "Whale hunter", "Tournament shark"]                                  # one for each level that can be cleared
+    for i, nm in enumerate(tl_names):
+        bd(TL, f"tlevel-{keys[i]}", nm, f"Clear the {level_name(keys[i])} tournaments", LEVEL_CHIPS[i], 1 if tl[i]["status"] == "cleared" else 0)
+    bd(TL, "tclimb-3", "On the ladder", "Clear 3 tournament levels", 25, t_cleared, 3)
+    bd(TL, "tclimb-7", "Halfway up", "Clear 7 tournament levels", 100, t_cleared, 7)
+    bd(TL, "tclimb-14", "Tournament summit", "Clear every tournament level up to the top one", 1000, t_cleared, 14)
+    t_net = sum((r["prize"] or 0) - (r["buy_in"] or 0) for r in tours)
+    t_in = sum(r["buy_in"] or 0 for r in tours)
+    bd(TL, "tprofit", "In profit", "Be in profit overall after 10 or more tournaments", 100, 1 if nt >= 10 and t_net > 0 else 0)
+    bd(TL, "troi", "Sharp", "Return 25% or more on your entries after 20 or more tournaments", 500, 1 if nt >= 20 and t_in and t_net / t_in >= 0.25 else 0)
+    black, running, was_down = 0, {}, set()
+    for r in tours:                                                         # a level where you were behind and then moved back into profit
+        k = r["stake"]
+        running[k] = running.get(k, 0) + (r["prize"] or 0) - (r["buy_in"] or 0)
+        if running[k] < 0:
+            was_down.add(k)
+        elif k in was_down and running[k] > 0:
+            black = 1
+    bd(TL, "tblack", "Back in the black", "Recover from a loss and finish in profit at the same tournament level", 100, black)
+    run = best_run = 0
+    for r in tours:
+        run = run + 1 if (r["prize"] or 0) > 0 else 0
+        best_run = max(best_run, run)
+    bd(TL, "tstreak-3", "On a heater", "Finish in the money in 3 tournaments in a row", 100, best_run, 3)
+    bd(TL, "tplayed-50", "Regular at the tables", "Play 50 tournaments", 100, nt, 50)
 
     S = "Secret"
     bd(S, "tour-bubble", "Bubble boy", "Finish one place short of the money", 5, sum(1 for r in tours if r["place"] == mtt.paid_places(r["size"]) + 1),

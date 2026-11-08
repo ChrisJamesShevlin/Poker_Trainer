@@ -316,7 +316,7 @@ def trainer_config():
             if casino_mode() == "tournament":            # tournaments have their own ladder: nothing to do with the cash levels
                 r["lock_text"] = mtt.ladder_locked_message(summ["tourney_levels"], r["key"], total, g.currency)
                 x = tl[r["key"]]
-                r.update(tstatus=x["status"], tcashes=x["cashes"], tneed=x["need"], tplayed=x["played"])
+                r.update(tstatus=x["status"], tcashes=x["cashes"], tneed=x["need"], tplayed=x["played"], tmin=x["min_played"], tnet=x["net"])
             else:
                 r["lock_text"] = locked_message(g, r["key"], levels) if levels else None
             r["locked"] = r["lock_text"] is not None

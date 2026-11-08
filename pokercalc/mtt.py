@@ -60,36 +60,47 @@ def structure(stake):
     return {"start_chips": chips, "hands_per_level": per, "ante_from": ante_from, "levels": levels}
 
 
-# ---- the tournament ladder: its own progression, separate from the cash levels. You unlock the next level by finishing in the money at
-# the one you are on (twice at the three lowest, three times above), so a player who only plays tournaments can climb. Only tournaments
-# played in the Casino count (a result you typed in from a real site never unlocks anything).
+# ---- the tournament ladder: its own progression, separate from the cash levels. To clear a level (and unlock the next) you need, at that
+# level, enough in-the-money finishes (twice at the three lowest, three times above), a profit (prizes at least equal to the entries you paid
+# there) and enough tournaments played (so a couple of lucky results cannot carry you). A player who only plays tournaments can climb.
+# Only tournaments played in the Casino count (a result you typed in from a real site never unlocks anything).
+LADDER_MIN_PLAYED = 8
+
+
 def ladder_need(i, n):
     """How many in-the-money finishes clear level number i (none at the top level)."""
     return 0 if i >= n - 1 else 2 if i < 3 else 3
 
 
+def _signed_money(cents, cur="$"):
+    return ("+" if cents >= 0 else "-") + stakes.money(abs(cents), cur)
+
+
 def ladder(rows, name_fn=None, cur="$"):
-    """The ladder from your finished Casino tournaments (rows: stake, place, prize): one entry per stake with its status
-    (cleared / current / locked), the in-the-money finishes so far and how many are needed."""
+    """The ladder from your finished Casino tournaments (rows: stake, place, buy_in, prize): one entry per stake with its status
+    (cleared / current / locked), the in-the-money finishes, tournaments played and net result there, and what is needed."""
     keys = list(stakes.STAKES)
     n = len(keys)
-    played, cashes, best = {}, {}, {}
+    played, cashes, best, net = {}, {}, {}, {}
     for r in rows:
         k = r["stake"]
         if k not in stakes.STAKES:
             continue
         played[k] = played.get(k, 0) + 1
+        net[k] = net.get(k, 0) + (r["prize"] or 0) - (r["buy_in"] or 0)
         if r["prize"] > 0:
             cashes[k] = cashes.get(k, 0) + 1
         best[k] = min(best.get(k, 10 ** 9), r["place"])
-    current = next((i for i, k in enumerate(keys[:-1]) if cashes.get(k, 0) < ladder_need(i, n)), n - 1)
+    cleared = lambda i, k: (cashes.get(k, 0) >= ladder_need(i, n) and played.get(k, 0) >= LADDER_MIN_PLAYED and net.get(k, 0) >= 0)
+    current = next((i for i, k in enumerate(keys[:-1]) if not cleared(i, k)), n - 1)
     out = []
     for i, k in enumerate(keys):
         fee = stakes.buy_in_range(k)[1]
         sc = structure(k)
         out.append({"key": k, "name": name_fn(k) if name_fn else stakes.blinds_text(k, cur), "blinds": stakes.blinds_text(k, cur),
                     "status": "cleared" if i < current else "current" if i == current else "locked",
-                    "need": ladder_need(i, n), "cashes": cashes.get(k, 0), "played": played.get(k, 0), "best": best.get(k),
+                    "need": ladder_need(i, n), "cashes": cashes.get(k, 0), "played": played.get(k, 0), "min_played": LADDER_MIN_PLAYED,
+                    "net_raw": net.get(k, 0), "net": _signed_money(net.get(k, 0), cur), "best": best.get(k),
                     "entry": stakes.money(fee, cur), "entry_raw": fee,
                     "chips": f"{sc['start_chips']:,} chips ({sc['start_chips'] // sc['levels'][0][1]}bb)"})
     return out
@@ -100,8 +111,8 @@ def ladder_locked_message(levels, key, account, cur="$"):
     lv = next(x for x in levels if x["key"] == key)
     if lv["status"] == "locked":
         now = next(x for x in levels if x["status"] == "current")
-        return (f"{lv['name']} tournaments are locked: finish in the money {now['need']} times at {now['name']} first "
-                f"({now['cashes']} so far).")
+        return (f"{lv['name']} tournaments are locked: at {now['name']} you need {now['need']} in-the-money finishes, a profit and "
+                f"{now['min_played']} tournaments played ({now['cashes']} in the money, {now['played']} played, {now['net']} so far).")
     if account < lv["entry_raw"]:
         return f"The entry is {lv['entry']} and you have {stakes.money(account, cur)}."
     return None
