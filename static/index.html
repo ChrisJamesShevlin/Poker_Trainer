@@ -184,6 +184,7 @@ dialog .field{margin-bottom:10px}
     </div>
     <div id="endFields" class="hidden">
       <div class="field"><label>Your total balance now, on and off the table</label><input id="eBal" type="number" inputmode="decimal" step="any"></div>
+      <div class="dim" id="eHint" style="font-size:12.5px"></div>
     </div>
     <div id="endTour" class="hidden">
       <div class="field"><label>Finishing place</label><input id="tPlace" type="number" inputmode="numeric" step="1" min="1"></div>
@@ -413,8 +414,10 @@ async function save(res){   // res = chips won (+) or lost (-) this hand
            taken:decisions.length?decisions[decisions.length-1].taken:null,decisions,result:res==null?'':res};
   const hr=await fetch('/api/hand',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});
   if(!hr.ok){let m='Not saved';try{m=(await hr.json()).error||m}catch(e){}alert(m);return}
-  try{notify((await hr.json()).notices)}catch(e){}
-  if(res!=null&&startStack!==null){const ns=clean(startStack+res);$('stack').value=ns;store.set('stack',ns)}
+  let j={};try{j=await hr.json()}catch(e){}
+  try{notify(j.notices)}catch(e){}
+  if(j.stack!=null){const ns=clean(j.stack);$('stack').value=ns;store.set('stack',ns)}      // the Casino knows your real stack
+  else if(res!=null&&startStack!==null){const ns=clean(startStack+res);$('stack').value=ns;store.set('stack',ns)}
   const order=SEATS[tableSize];
   seatIdx=(seatIdx-1+order.length)%order.length; pos=norm(order[seatIdx],order);      // the button moves left, so your seat goes BTN, CO, HJ, UTG, BB, SB, BTN ... store.set('seat',seatIdx); store.set('pos',pos);   // the button moves on
   clearHand(); toast('Saved - next seat: '+pos);
@@ -471,11 +474,17 @@ function paintFmt(){
   $('cashFields').classList.toggle('hidden',sessFmt!=='cash');$('tourFields').classList.toggle('hidden',sessFmt!=='tournament');
 }
 document.querySelectorAll('#sFmt button').forEach(b=>b.onclick=()=>{sessFmt=b.dataset.f;paintFmt()});
-$('sessPill').onclick=()=>{
+$('sessPill').onclick=async()=>{
+  await loadSession();                                   // (fresh: the hands you have logged since)
   const ending=!!session, tour=ending&&session.format==='tournament';
   $('dlgTitle').textContent=ending?(tour?'End tournament':'End session'):'Start session';
   $('startFields').classList.toggle('hidden',ending);$('endFields').classList.toggle('hidden',!ending||tour);$('endTour').classList.toggle('hidden',!tour);
   if(!ending){paintFmt();if(window.lastBalance!=null)$('sBal').value=window.lastBalance}
+  if(ending&&!tour){
+    const ex=session.expected_balance;
+    $('eBal').value=ex!=null?ex:'';
+    $('eHint').textContent=ex!=null?`Filled in from your start balance (${session.balance_before}) plus the ${session.hands_logged} hand${session.hands_logged==1?'':'s'} you logged. Change it if your real total is different. It is ALL your money, not just your stack.`:'';
+  }
   $('sessDlg').showModal();
 };
 $('sessForm').onsubmit=async e=>{
@@ -488,7 +497,9 @@ $('sessForm').onsubmit=async e=>{
       body={place:+$('tPlace').value,size:+$('tSize').value||0,prize:+$('tPrize').value||0};
     }else{
       if($('eBal').value==='')return;
-      body={balance_after:+$('eBal').value};
+      const ex=session.expected_balance,got=+$('eBal').value;
+      if(ex!=null&&ex>0&&got<0.5*ex&&!confirm(`You entered ${got}, but you started with ${session.balance_before} and your logged hands add up to about ${ex}.\n\nThe total balance is ALL your money (on and off the table), not your stack.\n\nUse ${got} anyway?`))return;
+      body={balance_after:got};
     }
     const r=await (await fetch('/api/session/end',{method:'POST',headers:h,body:JSON.stringify(body)})).json();
     if(r.recorded===false)toast('The Casino already recorded this tournament');

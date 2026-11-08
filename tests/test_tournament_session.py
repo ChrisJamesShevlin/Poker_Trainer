@@ -91,3 +91,27 @@ def test_the_same_hand_in_the_casino_and_the_rta_is_one_row(client):
     assert hand(client, hole=first["hole"].split(), board=first["board"].split(), result=-30, stack=2970, bb=30).status_code == 200
     rows = server.db().execute("SELECT source, practice FROM hands").fetchall()
     assert len(rows) == 1 and rows[0]["source"] == "both" and rows[0]["practice"] == 2
+
+
+def test_a_cash_session_says_what_the_balance_should_be_from_the_hands_logged(client):
+    client.post("/api/session/start", json={"balance": 60, "buy_in": 2, "bb": 0.02})
+    for result in (-0.40, 0.23):
+        client.post("/api/hand", json=dict(hole=["Ah", "Kd"], board=["2c", "7h", "Jd"], pot=0.2, call=0.05, opps=1, equity=0.4, required=0.3,
+                                           suggested="CALL", taken="CALL", result=result, stack=2.0, decisions=[]))
+    s = client.get("/api/session").get_json()["active"]
+    assert s["expected_balance"] == 59.83 and s["hands_logged"] == 2                         # 60 - 0.40 + 0.23
+    client.post("/api/session/end", json={"balance_after": 59.83})
+    start(client)
+    assert "expected_balance" not in client.get("/api/session").get_json()["active"]          # a tournament has no balance
+
+
+def test_the_rta_gets_your_real_stack_from_the_casino_after_the_same_hand(client):
+    client.post("/api/session/start", json={"balance": 60, "buy_in": 2, "bb": 0.02})
+    d = client.post("/api/trainer/deal").get_json()
+    while d.get("legal"):
+        d = client.post("/api/trainer/act", json={"action": "check" if d["legal"]["can_check"] else "fold"}).get_json()
+    first = server.db().execute("SELECT * FROM hands").fetchone()
+    r = hand(client, hole=first["hole"].split(), board=first["board"].split(), result=-0.02, stack=2.0, bb=None).get_json()
+    assert r["stack"] == server.trainer_table().hero_stack / 100                       # the Casino's stack, not a sum worked out from what was typed
+    other = hand(client, hole=["As", "Ad"], board=[], result=1.0, stack=2.0, bb=None).get_json()
+    assert other["stack"] is None                                                       # a hand that was not played in the Casino: the RTA works it out itself

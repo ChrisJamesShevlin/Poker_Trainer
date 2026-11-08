@@ -37,7 +37,12 @@ def session():
     row = store.open_session(con)
     last = con.execute("SELECT balance_after FROM sessions WHERE balance_after IS NOT NULL "
                        "ORDER BY id DESC LIMIT 1").fetchone()
-    return jsonify(active=dict(row) if row else None, last_balance=last[0] if last else None)
+    active = dict(row) if row else None
+    if active and active.get("format") != "tournament":     # what your total should be now: the start balance plus the hands you logged
+        s = con.execute("SELECT COALESCE(SUM(result), 0) FROM hands WHERE session_id=?", (row["id"],)).fetchone()[0]
+        active["expected_balance"] = round(row["balance_before"] + s, 2)
+        active["hands_logged"] = con.execute("SELECT COUNT(*) FROM hands WHERE session_id=?", (row["id"],)).fetchone()[0]
+    return jsonify(active=active, last_balance=last[0] if last else None)
 
 
 @app.post("/api/session/start")
@@ -71,6 +76,19 @@ def backup_now():
     return jsonify(message=backup.run(db()))
 
 
+def casino_stack_for(con, hand_row_id):
+    """If this RTA hand is the same hand you just played in the Casino, your real stack after it (so the RTA never has to work it out
+    from what you typed): money for cash, chips for a tournament. None if it is not a Casino hand."""
+    r = con.execute("SELECT h.source, th.hand_no FROM hands h LEFT JOIN trainer_hands th ON th.id = h.trainer_hand_id WHERE h.id = ?",
+                    (hand_row_id,)).fetchone() if hand_row_id else None
+    if not r or r["source"] != "both":
+        return None
+    t = trainer_table()
+    if t.last and t.last["hand_no"] == r["hand_no"] and (t.hand is None or t.hand.over):
+        return t.hero_stack if t.tourney is not None else t.hero_stack / 100
+    return None
+
+
 @app.post("/api/hand")
 def hand():
     d = request.get_json()
@@ -92,11 +110,12 @@ def hand():
         res = res * k if res is not None else None
         practice = 2
     q = Query(d["hole"], d["board"], pot, call, int(d.get("opps") or 1), d.get("range_pct") or None)
-    store.log_hand(con, row["id"] if row else None, q, d.get("position"), stack, d["equity"], d["required"],
-                   d.get("suggested"), d.get("taken"), res, d.get("decisions"), practice=practice)
+    lid = store.log_hand(con, row["id"] if row else None, q, d.get("position"), stack, d["equity"], d["required"],
+                         d.get("suggested"), d.get("taken"), res, d.get("decisions"), practice=practice)
     with _lock:
         cur = grind_table().currency
-    return jsonify(ok=True, notices=grind.check_new(con, cur))
+        stack_now = casino_stack_for(con, lid)
+    return jsonify(ok=True, notices=grind.check_new(con, cur), stack=stack_now)
 
 
 @app.post("/api/history/clear")

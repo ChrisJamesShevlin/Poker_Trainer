@@ -215,6 +215,7 @@ def log_hand(con, sid, q, position, stack, eq, required, suggested, taken, resul
          q.range_pct, position, stack, eq, required, suggested, taken, result, json.dumps(decisions) if decisions is not None else None,
          _flag(practice)))
     con.commit()
+    return con.execute("SELECT last_insert_rowid()").fetchone()[0]
 
 
 def clear_history(con):
