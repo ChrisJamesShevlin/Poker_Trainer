@@ -504,7 +504,7 @@ function renderLobby(){
   });
   const st=CFG.stakes.find(x=>x.key===sel.stake);
   $('buyLbl').textContent=tour?`Entry (${st.entry})`:`Buy-in (${st.buy_in})`;
-  if(tour)$('tierText').innerHTML=`Everyone starts with the same chips: <b>${st.structure}</b>. Entry ${st.entry}, prize pool ${st.prize_pool}. In a hand, the "For the RTA" box gives the big blind, your stack and the other numbers to type into the RTA (all in chips).`;else $('tierText').textContent=st.tier_text;
+  if(tour)$('tierText').innerHTML=`Everyone starts with the same chips: <b>${st.structure}</b>. Entry ${st.entry}, prize pool ${st.prize_pool}. ${st.tneed?`Ladder: ${st.tcashes} of ${st.tneed} in-the-money finishes here unlock the next level.`:''} In a hand, the "For the RTA" box gives the big blind, your stack and the other numbers to type into the RTA (all in chips).`;else $('tierText').textContent=st.tier_text;
   const bi=$('buyIn');if(document.activeElement!==bi)bi.value=(sel.buy_in/100).toFixed(2);
   $('buyMin').onclick=()=>{sel.buy_in=st.buy_in_min;bi.value=(sel.buy_in/100).toFixed(2)};
   $('buyMax').onclick=()=>{sel.buy_in=Math.min(st.buy_in_max,S.account);bi.value=(sel.buy_in/100).toFixed(2)};

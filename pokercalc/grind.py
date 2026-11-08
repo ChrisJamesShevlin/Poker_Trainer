@@ -195,7 +195,8 @@ def summary(con, cur="$"):
     rows = con.execute("SELECT ts, stake, net, actions, strength, pot, hole, board, showdown, meta, COALESCE(practice, 0) AS practice FROM trainer_hands WHERE ts > ? AND COALESCE(practice, 0) IN (0, 2) ORDER BY ts, id", (reset_time(con),)).fetchall()
     lvl = 0                                       # index of the level you are on
     rta = _rta_rows(con)                          # what the calculator logged, per stake
-    tours = [dict(r) for r in con.execute("SELECT * FROM tournaments WHERE ts > ? ORDER BY ts, id", (reset_time(con),))]
+    tours = [dict(r) for r in con.execute("SELECT * FROM tournaments WHERE ts > ? ORDER BY ts, id", (reset_time(con),))
+             if (r["source"] or "casino") == "casino"]            # (a result you typed in from a real site never counts for badges or levels)
     start = [0.0] * (len(keys) + 1)               # when each level became yours (RTA decisions before that do not count)
     acc = [_new() for _ in keys]
     cleared = {}                                  # stake -> what you had when you cleared it
@@ -433,7 +434,7 @@ def summary(con, cur="$"):
     chips = sum(b["chip"] for b in badges if b["earned"])
     chips_all = sum(b["chip"] for b in badges)
 
-    return dict(levels=levels, rta=dict(hands=len(rta_all), decisions=rta_n, followed=rta_f), badges=badges, chips=chips, chips_all=chips_all,
+    return dict(levels=levels, tourney_levels=mtt.ladder(tours, level_name, cur), rta=dict(hands=len(rta_all), decisions=rta_n, followed=rta_f), badges=badges, chips=chips, chips_all=chips_all,
                 group_order=GROUP_ORDER + ["Completionist"], total_hands=total, sessions=len(sessions), cleared=n_cleared,
                 off_ladder=off_ladder, too_easy=too_easy, check_every=CHECK_EVERY,
                 vpip_range=list(VPIP_RANGE), min_pfr=MIN_PFR)

@@ -70,8 +70,10 @@ RTA can stay open in one browser window and the Casino in another.
   and no antes until late, while the bigger ones start with up to 200 big blinds, play slower levels and add antes earlier. Every table plays at once (the other tables are played by the bots), players who bust are out with their
   finishing place, tables are kept balanced and broken as players go out (so your opponents change, and your own table can be
   broken), and the last six play the final table. The top five are paid, top-heavy. The entry fee comes out of the same account
-  as cash and the prize goes back into it, and the levels are locked exactly like cash (cleared on the Grinding page, and 30
-  buy-ins). The bots play a cash-game style, so they are not tournament experts and the RTA's advice ignores the prize structure.
+  as cash and the prize goes back into it, and tournaments have their own
+  ladder, separate from the cash levels (shown on the Grinding page): finish in the money twice at each of the three lowest levels and three
+  times above to unlock the next, so you can climb without playing any cash. Only tournaments played in the Casino count, and the entry
+  just has to fit your account. The bots play a cash-game style, so they are not tournament experts and the RTA's advice ignores the prize structure.
 - Game speed (Instant / Fast / Normal / Slow): the other players take a moment to act, like an online table. Each bot has
   its own tempo, many folds are snap folds, big decisions take longer and now and then someone tanks. The seat that is
   about to act glows with "thinking", Skip jumps to your turn, and the shot clock only starts when it is your turn.

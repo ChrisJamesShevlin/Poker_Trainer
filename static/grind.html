@@ -80,6 +80,8 @@ button.danger{background:transparent;border:1px solid #7f1d1d;color:#fca5a5}
   <div class="card"><h2>Your climb</h2><div class="summary" id="summary"></div>
     <div class="note" id="rules"></div></div>
   <div class="card"><h2>The path: NL2 to NL100,000</h2><ol class="path" id="path"></ol></div>
+  <div class="card"><h2>Tournament ladder</h2>
+    <div class="note" id="tnote" style="margin-bottom:12px"></div><ol class="path" id="tpath"></ol></div>
   <div class="card"><h2>Badges and achievements</h2><div id="badges"></div></div>
   <div class="note" style="margin-bottom:30px">Beating bots is practice, not proof that you beat real people. A win rate over a few thousand hands
     is still mostly luck, which is why each level shows its margin of error. The targets are our own starting numbers (edit RULES in
@@ -118,6 +120,15 @@ function node(L,G){
     <div class="top"><b>${esc(L.name)}</b><span class="dim">${esc(L.blinds)}</span><span class="tag ${L.status}">${tag}</span>${L.new?'<span class="newtag">NEW</span>':''}${L.unlocked_new?'<span class="newtag">NEW: UNLOCKED</span>':''}<span class="tag">${esc(L.badge)}</span></div>
     <div class="mix">${mix}</div><div class="bars">${bars}</div>${act}</div></li>`;
 }
+function tnode(T,L){
+  const tag=T.status==='cleared'?'Cleared':T.status==='current'?'You are here':'Locked';
+  const bars=T.status==='locked'?'':T.need?bar(`Finish in the money (top 5 of 36)`,T.cashes,`${T.cashes} / ${T.need}`,T.cashes/T.need,T.cashes>=T.need):`<div class="note">The top level: nothing more to unlock.</div>`;
+  const info=`<div class="mix">Entry ${esc(T.entry)} &middot; ${esc(T.chips)} &middot; ${T.played} played${T.best?` &middot; best finish ${T.best}`:''}</div>`;
+  const act=T.status!=='locked'?`<div class="actions"><button data-tour="${esc(T.key)}">Play a tournament here</button></div>`
+    :`<div class="note">Finish in the money at the level above first.</div>`;
+  return `<li class="node ${T.status}"><div class="dot">${chipHtml(L.chip,L.chip_text,{size:42,locked:T.status!=='cleared'})}</div><div class="body">
+    <div class="top"><b>${esc(T.name)}</b><span class="dim">${esc(T.blinds)}</span><span class="tag ${T.status}">${tag}</span></div>${info}<div class="bars">${bars}</div>${act}</div></li>`;
+}
 function chipHtml(value,text,o={}){
   const t=o.secret?'?':text;
   return `<div class="chip v${value} l${t.length}${o.locked?' locked':''}" style="--size:${o.size||60}px"><span>${esc(t)}</span></div>`;
@@ -148,7 +159,14 @@ async function load(){
   $('rules').textContent=`To clear a level you need the hands, the win rate, a VPIP of ${G.vpip_range[0]}-${G.vpip_range[1]}% and a PFR of at least ${G.min_pfr}%, plus enough decisions logged in the RTA at this level's blinds and a high share of them matching its advice. It is checked every ${G.check_every} hands once you have the minimum.`+
     (G.too_easy?` ${G.too_easy.toLocaleString()} hands did not count because the table was softer than the level asks for.`:'');
   $('path').innerHTML=G.levels.map(L=>node(L,G)).join('');
+  $('tnote').textContent='Tournaments have their own ladder, separate from the cash levels. Finish in the money (top 5 of 36) twice at each of the three lowest levels and three times above to unlock the next one. You can climb it without playing any cash. Only tournaments played in the Casino count.';
+  $('tpath').innerHTML=G.tourney_levels.map((T,i)=>tnode(T,G.levels[i])).join('');
   renderBadges(G);
+  document.querySelectorAll('button[data-tour]').forEach(btn=>btn.onclick=async()=>{
+    const r=await fetch('/api/trainer/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'tournament'})});
+    if(!r.ok){toast((await r.json()).error||'Could not open the tournament lobby');return}
+    window.open('/trainer','_blank');
+  });
   document.querySelectorAll('button[data-stake]').forEach(btn=>btn.onclick=async()=>{
     const r=await fetch('/api/trainer/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'grind',stake:btn.dataset.stake})});
     const d=await r.json();

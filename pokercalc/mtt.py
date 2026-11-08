@@ -60,6 +60,53 @@ def structure(stake):
     return {"start_chips": chips, "hands_per_level": per, "ante_from": ante_from, "levels": levels}
 
 
+# ---- the tournament ladder: its own progression, separate from the cash levels. You unlock the next level by finishing in the money at
+# the one you are on (twice at the three lowest, three times above), so a player who only plays tournaments can climb. Only tournaments
+# played in the Casino count (a result you typed in from a real site never unlocks anything).
+def ladder_need(i, n):
+    """How many in-the-money finishes clear level number i (none at the top level)."""
+    return 0 if i >= n - 1 else 2 if i < 3 else 3
+
+
+def ladder(rows, name_fn=None, cur="$"):
+    """The ladder from your finished Casino tournaments (rows: stake, place, prize): one entry per stake with its status
+    (cleared / current / locked), the in-the-money finishes so far and how many are needed."""
+    keys = list(stakes.STAKES)
+    n = len(keys)
+    played, cashes, best = {}, {}, {}
+    for r in rows:
+        k = r["stake"]
+        if k not in stakes.STAKES:
+            continue
+        played[k] = played.get(k, 0) + 1
+        if r["prize"] > 0:
+            cashes[k] = cashes.get(k, 0) + 1
+        best[k] = min(best.get(k, 10 ** 9), r["place"])
+    current = next((i for i, k in enumerate(keys[:-1]) if cashes.get(k, 0) < ladder_need(i, n)), n - 1)
+    out = []
+    for i, k in enumerate(keys):
+        fee = stakes.buy_in_range(k)[1]
+        sc = structure(k)
+        out.append({"key": k, "name": name_fn(k) if name_fn else stakes.blinds_text(k, cur), "blinds": stakes.blinds_text(k, cur),
+                    "status": "cleared" if i < current else "current" if i == current else "locked",
+                    "need": ladder_need(i, n), "cashes": cashes.get(k, 0), "played": played.get(k, 0), "best": best.get(k),
+                    "entry": stakes.money(fee, cur), "entry_raw": fee,
+                    "chips": f"{sc['start_chips']:,} chips ({sc['start_chips'] // sc['levels'][0][1]}bb)"})
+    return out
+
+
+def ladder_locked_message(levels, key, account, cur="$"):
+    """Why you cannot enter a tournament at this level (None if you can): not unlocked yet, or the entry is more than your account."""
+    lv = next(x for x in levels if x["key"] == key)
+    if lv["status"] == "locked":
+        now = next(x for x in levels if x["status"] == "current")
+        return (f"{lv['name']} tournaments are locked: finish in the money {now['need']} times at {now['name']} first "
+                f"({now['cashes']} so far).")
+    if account < lv["entry_raw"]:
+        return f"The entry is {lv['entry']} and you have {stakes.money(account, cur)}."
+    return None
+
+
 def paid_places(size):
     return max(1, min(6, round(PAID_SHARE * size)))
 

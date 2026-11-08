@@ -992,14 +992,14 @@ def play_tourney_out(client, limit=400):
     return d
 
 
-def test_the_tournament_levels_are_locked_exactly_like_cash(client):
+def test_the_tournament_levels_have_their_own_ladder_and_start_locked(client):
     to_tournament(client)
     cfg = client.get("/api/trainer/config").get_json()
     assert cfg["mode"] == "tournament" and [r["locked"] for r in cfg["stakes"]] == [False] + [True] * (len(KEYS) - 1)
     assert cfg["stakes"][0]["entry"] == "£2" and cfg["stakes"][0]["prize_pool"] == "£72"                      # 36 entries of £2
-    assert cfg["stakes"][1]["lock_text"] == "NL5 is locked: clear NL2 on the Grinding page first."
+    assert cfg["stakes"][1]["lock_text"] == "NL5 tournaments are locked: finish in the money 2 times at NL2 first (0 so far)."
     r = client.post("/api/tourney/register", json={"stake": KEYS[3]})
-    assert r.status_code == 403 and "NL25 is locked" in r.get_json()["error"]
+    assert r.status_code == 403 and "NL25 tournaments are locked" in r.get_json()["error"]
     assert client.get("/api/trainer/state").get_json()["tourney"] is None
 
 
@@ -1023,12 +1023,64 @@ def test_registering_takes_the_fee_from_the_grinding_account_and_fixes_the_setti
         assert client.post(f"/api/trainer/{path}").status_code == 403
 
 
-def test_you_cannot_register_without_the_money(client):
+def cash_finish(place=3, stake=None, prize=300, source="casino"):
+    c = server.db()                                                      # (one connection: the insert and the commit must be on the same one)
+    c.execute("INSERT INTO tournaments(ts,stake,place,size,buy_in,prize,hands,knockouts,level,final_table,heads_up,min_bb,table_moves,sharks,source,bb) "
+              "VALUES(strftime('%s','now'),?,?,36,200,?,60,1,5,1,0,8,2,4,?,0.02)", (stake if stake is not None else KEYS[0], place, prize, source))
+    c.commit()
+
+
+def test_finishing_in_the_money_unlocks_the_next_tournament_level_without_any_cash_play(client):
     to_tournament(client)
-    server.grind_table().cash_out()
-    server.grind_table().set_account(150)                                                                      # less than the £2 entry
+    assert server.db().execute("SELECT COUNT(*) FROM trainer_hands").fetchone()[0] == 0              # no cash hands at all
+    cash_finish()
+    st = client.get("/api/trainer/config").get_json()["stakes"]
+    assert st[1]["locked"] is True and st[0]["tcashes"] == 1 and st[0]["tneed"] == 2
+    cash_finish()
+    st = client.get("/api/trainer/config").get_json()["stakes"]
+    assert st[1]["locked"] is False and st[1]["tstatus"] == "current" and st[2]["locked"] is True       # NL5 is open, NL10 is not yet
+    server.grind_table().set_account(1000)
+    r = client.post("/api/tourney/register", json={"stake": KEYS[1]})
+    assert r.status_code == 200 and r.get_json()["tourney"]["buy_in"] == 500                           # a £5 entry at NL5
+    assert grind.summary(server.db())["levels"][0]["status"] == "current"                              # and the cash ladder has not moved
+
+
+def test_missing_the_money_and_real_site_results_do_not_unlock_anything(client):
+    to_tournament(client)
+    cash_finish(place=20, prize=0)
+    cash_finish(place=20, prize=0)
+    cash_finish(place=1, stake="", prize=500, source="rta")                                            # a real-site win (and it must not break the page)
+    st = client.get("/api/trainer/config").get_json()["stakes"]
+    assert st[1]["locked"] is True and st[0]["tcashes"] == 0
+    assert client.get("/api/grind").status_code == 200
+
+
+def test_the_tournament_ladder_needs_three_cashes_above_the_third_level(client):
+    for k in KEYS[:3]:
+        for _ in range(2):
+            cash_finish(stake=k)
+    tl = grind.summary(server.db())["tourney_levels"]
+    assert [x["status"] for x in tl[:4]] == ["cleared", "cleared", "cleared", "current"] and tl[3]["need"] == 3
+    for _ in range(2):
+        cash_finish(stake=KEYS[3])
+    assert grind.summary(server.db())["tourney_levels"][3]["status"] == "current"                      # two is not enough here
+    cash_finish(stake=KEYS[3])
+    assert grind.summary(server.db())["tourney_levels"][4]["status"] == "current"
+
+
+def test_the_entry_must_fit_your_account_and_being_broke_gives_a_starter_balance(client):
+    to_tournament(client)
+    for _ in range(2):
+        cash_finish()
+    g = server.grind_table()
+    g.cash_out()
+    g.set_account(300)                                                                                  # £3: enough for NL2's £2 entry, not NL5's £5
+    r = client.post("/api/tourney/register", json={"stake": KEYS[1]})
+    assert r.status_code == 403 and "entry is £5" in r.get_json()["error"]
+    g.set_account(150)                                                                                  # less than the lowest entry: a free starter balance
     r = client.post("/api/tourney/register", json={"stake": KEYS[0]})
-    assert r.status_code == 403 and "entry is £2" in r.get_json()["error"]
+    d = r.get_json()
+    assert r.status_code == 200 and "free starter balance" in d["notice"] and d["grind_account"] == stakes.starter_balance() - 200
 
 
 def test_the_prize_is_paid_into_the_same_account_and_the_tournament_is_saved_and_never_counts_for_cash(client):

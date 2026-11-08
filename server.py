@@ -308,9 +308,17 @@ def trainer_config():
         cur = t.currency
         rows = stakes.ladder(cur)
         g = grind_table()
-        levels = grind.summary(db(), g.currency)["levels"] if casino_mode() in ("grind", "tournament") else None
+        summ = grind.summary(db(), g.currency) if casino_mode() in ("grind", "tournament") else None
+        levels = summ["levels"] if summ else None
+        tl = {x["key"]: x for x in summ["tourney_levels"]} if summ else {}
+        total = g.bankroll + g.hero_stack
         for r in rows:                                   # levels are locked on the Grinding side only; Practice is open
-            r["lock_text"] = locked_message(g, r["key"], levels) if levels else None
+            if casino_mode() == "tournament":            # tournaments have their own ladder: nothing to do with the cash levels
+                r["lock_text"] = mtt.ladder_locked_message(summ["tourney_levels"], r["key"], total, g.currency)
+                x = tl[r["key"]]
+                r.update(tstatus=x["status"], tcashes=x["cashes"], tneed=x["need"], tplayed=x["played"])
+            else:
+                r["lock_text"] = locked_message(g, r["key"], levels) if levels else None
             r["locked"] = r["lock_text"] is not None
             fee = stakes.buy_in_range(r["key"])[1]
             r["entry"] = stakes.money(fee, cur)
@@ -497,7 +505,11 @@ def tourney_register():
             return trainer_error("Finish the tournament you are in first.")
         if g.hand is not None and not g.hand.over:
             return trainer_error("Finish the cash hand in progress first.")
-        why = locked_message(g, stake)
+        note = None
+        if g.bankroll + g.hero_stack < stakes.buy_in_range(stakes.first_stake())[1]:         # broke: the same free starter balance as in cash
+            g.reload_starter()
+            note = f"You were out of money, so here is a free starter balance of {stakes.money(stakes.starter_balance(), g.currency)}."
+        why = mtt.ladder_locked_message(grind.summary(db(), g.currency)["tourney_levels"], stake, g.bankroll + g.hero_stack, g.currency)
         if why:
             return _refuse(why)
         fee = stakes.buy_in_range(stake)[1]
@@ -515,7 +527,7 @@ def tourney_register():
         enforce_settings(t)
         store.trainer_save(db(), g.to_dict())
         trainer_save(t)
-        return trainer_reply(t)
+        return trainer_reply(t, **({"notice": note} if note else {}))
 
 
 @app.post("/api/trainer/rebuy")
