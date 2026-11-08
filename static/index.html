@@ -170,9 +170,10 @@ dialog .field{margin-bottom:10px}
     <div id="startFields">
       <div class="field"><div class="seg" id="sFmt"><button type="button" data-f="cash" class="on">Cash game</button><button type="button" data-f="tournament">Tournament</button></div></div>
       <div id="cashFields">
-        <div class="field"><label>Balance (total chips)</label><input id="sBal" type="number" inputmode="decimal" step="any"></div>
-        <div class="field"><label>Buy-in</label><input id="sBuy" type="number" inputmode="decimal" step="any"></div>
-        <div class="field"><label>Big blind</label><input id="sBB" type="number" inputmode="decimal" step="any"></div>
+        <div class="field"><label>Balance: ALL your money now, on and off the table</label><input id="sBal" type="number" inputmode="decimal" step="any"></div>
+        <div class="field"><label>Buy-in: only what you sit down at the table with</label><input id="sBuy" type="number" inputmode="decimal" step="any"></div>
+        <div class="field"><label>Big blind of the table</label><input id="sBB" type="number" inputmode="decimal" step="any"></div>
+        <div class="dim" style="font-size:12.5px">Example: £60 in your account, sitting down with £2 at a £0.02 big blind: balance 60, buy-in 2, big blind 0.02. When you end the session you enter your new total balance, and your result is that minus this starting balance.</div>
       </div>
       <div id="tourFields" class="hidden">
         <div class="field"><label>Entry fee (what you paid to enter, in money)</label><input id="tEntry" type="number" inputmode="decimal" step="any"></div>
@@ -181,7 +182,7 @@ dialog .field{margin-bottom:10px}
       </div>
     </div>
     <div id="endFields" class="hidden">
-      <div class="field"><label>Total balance now</label><input id="eBal" type="number" inputmode="decimal" step="any"></div>
+      <div class="field"><label>Your total balance now, on and off the table</label><input id="eBal" type="number" inputmode="decimal" step="any"></div>
     </div>
     <div id="endTour" class="hidden">
       <div class="field"><label>Finishing place</label><input id="tPlace" type="number" inputmode="numeric" step="1" min="1"></div>
