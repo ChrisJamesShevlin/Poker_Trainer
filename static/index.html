@@ -232,24 +232,21 @@ function seg(id,items,get,set){
   });
 }
 const BLINDS=['BTN','SB','BB'];
-// any seat between the big blind and the button counts as one 'middle' seat, read from the hijack chart (or the nearest one the table has)
-function midOf(order){return ['HJ','CO','UTG'].find(p=>order.includes(p))||'HJ'}
-function norm(p,order){return BLINDS.includes(p)?p:midOf(order)}
-function updSeat(){$('posLbl').textContent='Seat: '+(BLINDS.includes(pos)?pos:'any (not BTN/SB/BB)')}
+// your real seat: UTG, HJ, CO, BTN, SB or BB (only the ones a table of this size has). At a bigger table, extra early seats read as the nearest chart seat.
+const NEAR={UTG:['UTG','HJ','CO'],HJ:['HJ','UTG','CO'],CO:['CO','HJ','UTG']};
+function seatsOf(order){return POS.filter(p=>order.includes(p))}
+function norm(p,order){return order.includes(p)?p:(NEAR[p]||[]).find(q=>order.includes(q))||order[0]}
+function updSeat(){$('posLbl').textContent='Seat: '+pos}
 function buildControls(){
-  pos=norm(pos,SEATS[tableSize]);   // older saved seats (UTG/CO) become the single middle seat
+  pos=norm(pos,SEATS[tableSize]);
   seg('oppSeg',[1,2,3,4,5,6].map(n=>[n,n]),()=>opps,v=>{opps=v;store.set('opps',v)});
   seg('rangeSeg',RANGES,()=>rangePct,v=>{rangePct=v;store.set('range',v)});
   seg('tableSeg',TABLES,()=>table,v=>{table=v;store.set('table',v)});
   seg('oppTypeSeg',OPPTYPES,()=>oppType,v=>{oppType=v;store.set('opptype',v)});
   seg('multiSeg',[['Just this street',false],['Bet earlier streets too',true]],()=>multi,v=>multi=v);
-  // 'Seat' = any seat between the big blind and the button
-  seg('posSeg',[['Seat','MID'],['BTN','BTN'],['SB','SB'],['BB','BB']],()=>BLINDS.includes(pos)?pos:'MID',v=>{
+  seg('posSeg',seatsOf(SEATS[tableSize]).map(p=>[p,p]),()=>pos,v=>{
     const order=SEATS[tableSize];
-    if(v==='MID'){
-      pos=midOf(order);
-      seatIdx=Math.max(0,order.indexOf(pos));
-    }else{pos=v;seatIdx=Math.max(0,order.indexOf(v))}
+    pos=v;seatIdx=Math.max(0,order.indexOf(v));
     store.set('pos',pos);store.set('seat',seatIdx);updSeat()});
   updSeat();
   seg('sizeSeg',[2,3,4,5,6,7,8,9].map(n=>[n,n]),()=>tableSize,v=>{
