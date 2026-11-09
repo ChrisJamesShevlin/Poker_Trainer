@@ -15,6 +15,21 @@ Licence: MIT (see `LICENSE`).
 Limits: it knows nothing about how your opponents play, it is not a GTO solver, and the
 preflop guide and check/call/raise suggestion are simple rules of thumb.
 
+## Multiplayer (play with a friend against the bots)
+
+A shared practice table for two people (Hold'em, play money): you and a friend each get your own seat, the other four seats are bots. There are no
+accounts, no hand tracking and no clock, and you each keep the RTA. The host (the person whose computer runs the game) sets the stake, buy-in and
+bot strength; both of you can pick a nickname.
+
+1. **Both of you** install [Tailscale](https://tailscale.com/download) (free, a private network) and sign in; the host invites the friend (share the
+   host's computer from the Tailscale admin page).
+2. **Host:** start the game, open **Multiplayer** (link at the top of the Casino or RTA page), press **Start sharing**, and send your friend the link
+   shown and the six-letter game code.
+3. **Friend:** open the link in a browser, type a name and the game code, and sit down. Their page shows only the table and the calculator (**RTA**).
+
+It is kept private on purpose: the app normally listens on this computer only. **Start sharing** opens a second door on the host's Tailscale address
+that lets through nothing except the table, the calculator and the join call (never the host's results or save), and a guest also needs the game code.
+
 ## Windows download (no Python needed)
 
 Go to the **Releases** page of this repository and download `PokerStudy-windows.zip`. Unzip it and double-click `PokerStudy.exe`: a black window opens

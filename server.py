@@ -12,6 +12,8 @@ from pokercalc.parser import Query
 from pokercalc.table import (DEFAULT_ACCOUNT, ONLINE_POSTFLOP_S, ONLINE_PREFLOP_S, SPEEDS, TIMER_CHOICES, NeedsRebuy, Table)
 
 app = Flask(__name__, static_folder="static", static_url_path="/static")
+from pokercalc import mp_server          # the multiplayer table (its own pages and calls)
+app.register_blueprint(mp_server.bp)
 
 
 def db():

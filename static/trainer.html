@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!--MP-->
 <title>Casino</title>
 <style>
 :root{
@@ -126,14 +127,30 @@ body.focus .seat{width:clamp(110px,22%,176px)}
 body.focus .seat .st{font-size:17px}body.focus .seat .nm{font-size:clamp(11px,1.2vw,14px)}
 body.focus .seat .bet,body.focus .seat .act{font-size:13px}
 body.focus .pot{font-size:19px}
+/* ---- multiplayer ---- */
+body.mp #lobbyCard,body.mp #practiceBar,body.mp #legend{display:none}
+body.guest header a.nav{display:none}
+#mpCard .code{font-size:34px;font-weight:700;letter-spacing:.22em;margin:2px 0 8px}
+#mpCard .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:6px 0}
+#mpCard .url{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:13px;word-break:break-all}
+#mpCard select,#mpCard input{background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:8px;padding:7px 9px;font:inherit}
+#joinBox{position:fixed;inset:0;background:#0b0f14ee;display:none;align-items:center;justify-content:center;z-index:50}
+#joinBox .box{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px;width:min(380px,92vw)}
+#joinBox input{width:100%;box-sizing:border-box;margin:6px 0 12px;background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:8px;padding:10px;font:inherit;font-size:17px}
 </style>
 </head>
 <body>
+<div id="joinBox"><div class="box"><h2 style="margin:0 0 4px">Join the table</h2>
+  <div class="dim" style="font-size:13px;margin-bottom:12px">Ask the host for the game code.</div>
+  <label class="dim" style="font-size:12px">Your name</label><input id="joinName" maxlength="20" autocomplete="off">
+  <label class="dim" style="font-size:12px">Game code</label><input id="joinCode" maxlength="8" autocomplete="off" style="text-transform:uppercase;letter-spacing:.2em">
+  <button class="btn" id="joinGo">Join</button><div class="dim" id="joinMsg" style="margin-top:10px;font-size:13px"></div></div></div>
 <header>
   <h1>Casino</h1>
-  <a href="/" target="_blank" title="Open the RTA in another tab">RTA &#8599;</a>
-  <a href="/grind" title="Climb the levels and collect badges">Grinding</a>
-  <a href="/#analytics" title="Your results across stakes">Analytics</a>
+  <a href="/" id="rtaLink" target="_blank" title="Open the RTA in another tab">RTA &#8599;</a>
+  <a href="/grind" class="nav" title="Climb the levels and collect badges">Grinding</a>
+  <a href="/multiplayer" class="nav" id="mpLink" title="Play at a shared table with a friend">Multiplayer</a>
+  <a href="/#analytics" class="nav" title="Your results across stakes">Analytics</a>
   <div class="hdrgrp">
     <button class="focusbtn" id="sfxBtn" title="Card and chip sounds">Sounds: on</button>
     <input class="vol" id="volume" type="range" min="0" max="100" value="70" title="Sound volume">
@@ -152,6 +169,7 @@ body.focus .pot{font-size:19px}
     <div class="card" id="controls"></div>
   </div>
   <div>
+    <div class="card" id="mpCard" style="display:none"></div>
     <div class="card">
       <h2>Your session</h2>
       <div class="stats" id="stats"></div>
@@ -194,6 +212,9 @@ body.focus .pot{font-size:19px}
 <script src="/static/notify.js"></script>
 <script>
 const $=id=>document.getElementById(id);
+const MP=window.MP||null;                                 // set by the server on /multiplayer (the host) and /play (a friend)
+if(MP){document.body.classList.add('mp',MP.role==='guest'?'guest':'host');try{if(MP.role==='guest'&&!MP.token)MP.token=sessionStorage.getItem('mp_token')}catch(e){}}
+const escH=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const SUIT={s:'♠',h:'♥',d:'♦',c:'♣'};
 const TYPEL={whale:'Whale',fish:'Fish',rec:'Rec',shark:'Shark'};
 const TYPEI={whale:'🐋',fish:'🐟',rec:'😎',shark:'🦈'};      // how good the player is, at a glance
@@ -214,7 +235,9 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const instant=()=>!S||S.speed==='instant';
 
 async function api(url,body){
-  const r=await fetch(url,{method:body===undefined?'GET':'POST',headers:{'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});
+  const headers={'Content-Type':'application/json'};
+  if(MP){url=url.replace('/api/trainer/','/api/mp/');if(MP.token)headers['X-MP-Token']=MP.token}       // the shared table has its own calls
+  const r=await fetch(url,{method:body===undefined?'GET':'POST',headers,body:body===undefined?undefined:JSON.stringify(body)});
   const d=await r.json().catch(()=>({}));
   if(!r.ok){const e=new Error(d.error||'Something went wrong');e.data=d;e.status=r.status;throw e}
   return d;
@@ -315,7 +338,7 @@ function renderTable(){
     if(!s.folded){for(let i=0;i<HOLE;i++){const key=`${S.hand_no}-s${s.seat}-${i}`;const mine=lit&&won&&s.hole&&L.five[s.seat];cards.appendChild(cardEl(s.hole?s.hole[i]:null,s.seat===0,key,mine?(L.five[s.seat].includes(s.hole[i])?'use':'dim'):''))}}
     d.appendChild(cards);
     const bx=document.createElement('div');bx.className='box';
-    const who=s.seat===0?'You':s.empty?'<span class="dim">-</span>':`<span class="ptype">${s.type?TYPEI[s.type]:'❓'}</span> `+(s.name||'Seat '+s.seat);
+    const who=s.seat===0?'You':s.empty?'<span class="dim">-</span>':`<span class="ptype">${s.human?'🧑':s.type?TYPEI[s.type]:'❓'}</span> `+escH(s.name||'Seat '+s.seat);
     bx.title=(s.name||'')+(s.type?` (${TYPEL[s.type]})`:'')+(s.blurb?' - '+s.blurb:'');bx.innerHTML=`<div class="pos">${s.position}${S.button===s.seat?'<span class="btnD">D</span>':''}</div><div class="nm">${who}</div><div class="st">${s.empty?'empty seat':s.out&&S.chip_mode?'OUT'+(s.place?' · '+ord(s.place):''):s.allin?'All-in':fmt(s.stack)}</div>`;
     d.appendChild(bx);
     const bet=document.createElement('div');bet.className='bet';bet.textContent=s.committed?fmt(s.committed):'';d.appendChild(bet);
@@ -408,12 +431,13 @@ function renderControls(){
   if(playing){c.innerHTML='<div class="actions"><span class="dim">The other players are acting&hellip;</span><button class="btn ghost small" id="skip">Skip</button></div>';$('skip').onclick=()=>{skipFlag=true};return}
   const mine=S&&S.started&&!S.over&&S.to_act===0&&S.legal;
   if(!mine){
-    const need=S&&S.hero_stack<S.bb&&!S.chip_mode;
+    const need=S&&S.hero_stack<S.bb&&!S.chip_mode&&!S.mp;
     const row=document.createElement('div');row.className='actions';
     row.innerHTML=need?`<span>You are out of chips.</span><button class="btn" id="rebuy2">Rebuy ${fmt(Math.min(S.buy_in,S.bankroll))}</button><span class="dim">${fmt(S.bankroll)} left in your account</span>`
+      :(S&&S.mp&&S.started&&!S.over)?`<span>Waiting for ${escH((S.seats[S.to_act]&&S.seats[S.to_act].name)||'the other players')}&hellip;</span>`
       :(S&&S.mode==='tournament'&&!S.tourney)?`<span>You are not in a tournament yet.</span><span class="dim">Choose a level below and press Register, then deal.</span>`
       :(S&&S.tourney&&S.tourney.finished)?`<span>The tournament is over.</span><span class="dim">Register for another below.</span>`
-      :`<button class="btn" id="deal">${S&&S.started?'Deal next hand':'Deal hand'}</button>${S&&S.chip_mode?'':'<button class="btn ghost" id="cashOut" title="Stand up: your stack goes back into your account, and you see who you were playing">Cash out</button>'}<span class="dim">Stack ${S?fmt(S.hero_stack):''} &middot; keyboard: space = deal</span>`;
+      :`<button class="btn" id="deal">${S&&S.started?'Deal next hand':'Deal hand'}</button>${S&&(S.chip_mode||S.mp)?'':'<button class="btn ghost" id="cashOut" title="Stand up: your stack goes back into your account, and you see who you were playing">Cash out</button>'}<span class="dim">Stack ${S?fmt(S.hero_stack):''} &middot; keyboard: space = deal</span>`;
     c.appendChild(row);
     if(need)$('rebuy2').onclick=()=>run(async()=>applyResponse(await api('/api/trainer/rebuy',{})));
     else if($('deal')){$('deal').onclick=deal;if($('cashOut'))$('cashOut').onclick=()=>run(async()=>applyResponse(await api('/api/trainer/cashout',{})))}
@@ -473,11 +497,13 @@ function renderStats(){
   if(!S)return;
   const net=S.hero_net;
   $('stats').innerHTML=`<div><b>${S.hand_no}</b><span>Hands</span></div><div><b class="${net>0?'pos':net<0?'neg':''}">${net>0?'+':net<0?'-':''}${fmt(Math.abs(net))}</b><span>Session ${(net/S.bb).toFixed(1)}bb</span></div><div><b>${fmt(S.hero_stack)}</b><span>Your stack</span></div>`;
-  $('acctStat').innerHTML=S.chip_mode?`Account <b>${money(S.grind_account)}</b> (shared with cash)`:`Account <b>${fmt(S.account)}</b> &middot; ${fmt(S.bankroll)} off the table &middot; ${S.account_buy_ins} buy-ins`;
+  if(S.mp){$('acctStat').textContent=S.role==='host'?(S.guest?`${S.guest} is at your table`:'Waiting for your friend'):`Playing at ${S.host_name}'s table`}
+  else $('acctStat').innerHTML=S.chip_mode?`Account <b>${money(S.grind_account)}</b> (shared with cash)`:`Account <b>${fmt(S.account)}</b> &middot; ${fmt(S.bankroll)} off the table &middot; ${S.account_buy_ins} buy-ins`;
   const st=CFG.stakes.find(x=>x.key===S.stake);
-  $('pill').textContent=S.tourney?`Tournament · blinds ${S.tourney.blinds[0]}/${S.tourney.blinds[1]}${S.tourney.ante?' ante '+S.tourney.ante:''} · ${S.tourney.left} left`:`${st.blinds} ${GAME} · 6-max · ${st.tier_name}${S.mode==='practice'?' · Practice':''}`;
+  $('pill').textContent=S.mp?`${st.blinds} ${GAME} · 6-max · Multiplayer`:S.tourney?`Tournament · blinds ${S.tourney.blinds[0]}/${S.tourney.blinds[1]}${S.tourney.ante?' ante '+S.tourney.ante:''} · ${S.tourney.left} left`:`${st.blinds} ${GAME} · 6-max · ${st.tier_name}${S.mode==='practice'?' · Practice':''}`;
 }
 function renderLobby(){
+  if(MP){renderMP();return}
   if(!CFG||!S)return;
   if(!sel.stake){sel.stake=S.stake;sel.buy_in=S.buy_in}
   const lock=S.started&&!S.over||playing;
@@ -529,6 +555,50 @@ function renderLobby(){
   const si=$('stackIn');if(document.activeElement!==si)si.value=(S.hero_stack/100).toFixed(2);
   ['sit','setStack','rebuy','reset','buyMin','buyMax','buyIn','stackIn'].forEach(id=>$(id).disabled=lock);
   if(L.buy_in){['buyMin','buyMax','buyIn','stackIn','setStack'].forEach(id=>$(id).disabled=true);sel.buy_in=st.buy_in_max;bi.value=(sel.buy_in/100).toFixed(2)}      // Grinding: a full buy-in, fixed
+}
+let mpInfo=null,mpSig='',mpDraft={};
+async function loadMpInfo(){if(MP&&MP.role==='host'){try{mpInfo=await api('/api/mp/host');mpSig='';renderMP()}catch(e){}}}
+function renderMP(){
+  const el=$('mpCard');if(!el||!S||!CFG)return;el.style.display='block';
+  const inHand=S.started&&!S.over;
+  if(MP.role==='guest'){
+    const sig='g'+S.stake+S.host_name+inHand;if(sig===mpSig)return;mpSig=sig;
+    const st=CFG.stakes.find(x=>x.key===S.stake);
+    el.innerHTML=`<h2>${escH(S.host_name)}'s table</h2><div style="font-size:14px">${escH(st?st.blinds:'')} ${GAME}, 6-max. The host chooses the blinds and the buy-in.</div>
+      <div class="row"><button class="btn ghost small" id="mpLeave">Leave the table</button></div>`;
+    $('mpLeave').onclick=()=>{if(confirm('Leave the table?'))run(async()=>{await api('/api/mp/leave',{});try{sessionStorage.removeItem('mp_token')}catch(e){}location.reload()})};
+    return;
+  }
+  const i=mpInfo||{};
+  const sig=JSON.stringify(['h',i,S.stake,S.buy_in,S.strength,inHand,S.guest]);if(sig===mpSig)return;mpSig=sig;
+  const st=CFG.stakes.find(x=>x.key===(mpDraft.stake||S.stake))||CFG.stakes[0];
+  const bi=mpDraft.buy_in!=null?mpDraft.buy_in:S.buy_in;
+  el.innerHTML=`<h2>Multiplayer table</h2>
+    <div class="dim" style="font-size:12.5px">Game code (your friend needs it)</div><div class="code">${escH(i.code||'......')}</div>
+    <div class="row"><button class="btn ghost small" id="mpNew">New code</button></div>
+    <div class="row"><label class="dim" style="font-size:12px">Your name at the table</label><input id="mpName" maxlength="20" value="${escH(S.host_name||'Host')}" style="width:140px"></div>
+    <div style="font-size:14px;margin-top:8px"><b>Friend:</b> ${S.guest?escH(S.guest)+' is at the table <button class="btn ghost small" id="mpKick">Remove</button>':'<span class="dim">nobody yet</span>'}</div>
+    <div style="margin-top:10px">${i.sharing?`<div class="dim" style="font-size:12.5px">Send your friend this link (they need Tailscale):</div><div class="url" id="mpUrl">${escH(i.url)}</div>
+        <div class="row"><button class="btn ghost small" id="mpCopy">Copy link</button><button class="btn ghost small" id="mpStop">Stop sharing</button></div>`
+      :`<button class="btn small" id="mpStart">Start sharing</button>${i.tailscale===false?'<div class="row"><input id="mpIp" placeholder="Your Tailscale address, e.g. 100.101.102.103" style="width:100%"></div>':''}<div class="dim" style="font-size:12.5px;margin-top:4px">${i.tailscale===false?'Tailscale was not found on this computer. Install it and sign in first.':'Opens the table to your friend over your private Tailscale network.'}</div>`}</div>
+    <h2 style="margin-top:14px">Table settings</h2>
+    <div class="row"><select id="mpStake">${CFG.stakes.map(x=>`<option value="${x.key}" ${x.key===st.key?'selected':''}>${escH(x.blinds)} (buy-in ${escH(x.buy_in)})</option>`).join('')}</select></div>
+    <div class="row"><label class="dim" style="font-size:12px">Buy-in for everyone</label><input id="mpBuy" type="number" step="0.01" style="width:110px" value="${(bi/100).toFixed(2)}"></div>
+    <div class="seg" id="mpStrength"></div><div class="dim" style="font-size:12px;margin:4px 0 8px" id="mpStrengthText"></div>
+    <div class="row"><button class="btn small" id="mpApply" ${inHand?'disabled':''}>Apply</button><span class="dim" style="font-size:12px">${inHand?'Finish the hand first.':'Changes start a fresh table.'}</span></div>`;
+  const sg=$('mpStrength');CFG.strengths.forEach(o=>{const b=document.createElement('button');b.textContent=o.label;b.className=(mpDraft.strength||S.strength)===o.key?'on':'';b.onclick=()=>{mpDraft.strength=o.key;mpSig='';renderMP()};sg.appendChild(b)});
+  const cu=CFG.strengths.find(o=>o.key===(mpDraft.strength||S.strength));$('mpStrengthText').textContent=cu?cu.text:'';
+  $('mpStake').onchange=e=>{mpDraft.stake=e.target.value;const s2=CFG.stakes.find(x=>x.key===e.target.value);mpDraft.buy_in=s2.buy_in_max;mpSig='';renderMP()};
+  $('mpBuy').oninput=e=>{mpDraft.buy_in=Math.round(parseFloat(e.target.value||0)*100)};
+  $('mpApply').onclick=()=>run(async()=>{const body={stake:mpDraft.stake||S.stake,buy_in:mpDraft.buy_in!=null?mpDraft.buy_in:S.buy_in,strength:mpDraft.strength||S.strength};
+    const d=await api('/api/trainer/settings',body);mpDraft={};mpSig='';await applyResponse(d);toast('Table updated')});
+  $('mpName').onchange=e=>run(async()=>{const nm=e.target.value.trim()||'Host';try{localStorage.setItem('mp_host_name',nm)}catch(x){}
+    await applyResponse(await api('/api/trainer/settings',{host_name:nm}));mpSig='';renderMP()});
+  $('mpNew').onclick=()=>run(async()=>{await api('/api/mp/newcode',{});await loadMpInfo()});
+  if($('mpKick'))$('mpKick').onclick=()=>{if(confirm('Remove your friend from the table?'))run(async()=>{await api('/api/mp/kick',{});await loadMpInfo()})};
+  if($('mpStart'))$('mpStart').onclick=()=>run(async()=>{await api('/api/mp/share',{on:true,ip:$('mpIp')?$('mpIp').value:''});await loadMpInfo()});
+  if($('mpStop'))$('mpStop').onclick=()=>run(async()=>{await api('/api/mp/share',{on:false});await loadMpInfo()});
+  if($('mpCopy'))$('mpCopy').onclick=async()=>{try{await navigator.clipboard.writeText(i.url);toast('Link copied')}catch(e){toast('Select the link and copy it')}};
 }
 function renderNews(){
   const el=$('news');el.innerHTML='';
@@ -596,9 +666,54 @@ setInterval(()=>{
   if(bar){bar.style.width=(100*left/S.timer_s)+'%';$('clocktxt').textContent=`${left.toFixed(0)}s left`}
   if(left<=0&&!busy)run(async()=>applyResponse(await api('/api/trainer/state')));
 },250);
+async function boot(){
+  CFG=await api('/api/trainer/config');const st=await api('/api/trainer/state');
+  document.body.classList.toggle('noanim',st.speed==='instant');S=st;seedSeen(S);render();
+  if(MP&&MP.role==='host'){
+    let saved=null;try{saved=localStorage.getItem('mp_host_name')}catch(e){}
+    if(saved&&saved!==S.host_name){await applyResponse(await api('/api/trainer/settings',{host_name:saved}))}   // your nickname is remembered
+    loadMpInfo();
+  }
+}
+/* ---- the shared table: the pages ask for changes now and then (the table can change while it is not your turn) ---- */
+let pollT=null;
+function startPolling(){
+  if(pollT)return;
+  pollT=setInterval(async()=>{
+    if(!MP||!MP.token||busy||playing||!S)return;
+    try{const st=await api('/api/trainer/state?version='+S.version);if(!st.unchanged)await applyResponse(st)}
+    catch(e){if(e.status===401){clearInterval(pollT);try{sessionStorage.removeItem('mp_token')}catch(x){}toast('You are no longer at the table.');setTimeout(()=>location.reload(),1800)}}
+  },1200);
+}
+function showJoin(){
+  $('joinBox').style.display='flex';
+  try{$('joinName').value=localStorage.getItem('mp_name')||''}catch(e){}
+  const go=async()=>{
+    const name=$('joinName').value.trim(),code=$('joinCode').value.trim();
+    if(!name||!code){$('joinMsg').textContent='Enter your name and the game code.';return}
+    try{localStorage.setItem('mp_name',name)}catch(e){}
+    try{
+      const d=await api('/api/mp/join',{name,code});
+      MP.token=d.token;try{sessionStorage.setItem('mp_token',d.token)}catch(e){}
+      $('joinBox').style.display='none';await boot();startPolling();
+    }catch(e){
+      $('joinMsg').textContent=e.message;
+      if(e.data&&e.data.wait)setTimeout(go,2000);            // a hand is in progress: try again until it has finished
+    }
+  };
+  $('joinGo').onclick=go;
+  $('joinCode').addEventListener('keydown',e=>{if(e.key==='Enter')go()});
+}
 (async()=>{
-  try{CFG=await api('/api/trainer/config');const st=await api('/api/trainer/state');document.body.classList.toggle('noanim',st.speed==='instant');S=st;seedSeen(S);render()}
-  catch(e){toast(e.message)}
+  try{
+    if(MP&&MP.role==='guest'){
+      $('rtaLink').href='/rta';$('rtaLink').title='Open the calculator in another tab';
+      if(MP.token){try{await boot();startPolling();return}catch(e){MP.token=null;try{sessionStorage.removeItem('mp_token')}catch(e2){}}}
+      showJoin();return;
+    }
+    await boot();
+    if(MP)startPolling();
+  }catch(e){toast(e.message)}
 })();
 </script>
 </body>
