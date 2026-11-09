@@ -23,7 +23,8 @@ def clean_name(name, fallback):
 
 
 class SharedTable:
-    def __init__(self, stake="0.01/0.02", buy_in=None, strength="balanced", seed=None, bot_sims=BOT_SIMS, currency="£", speed="normal"):
+    def __init__(self, stake="0.01/0.02", buy_in=None, strength="balanced", seed=None, bot_sims=BOT_SIMS, currency="£", speed="normal", scores=None):
+        self.scores = scores                  # a mp_scores.Scores that keeps the running total between the two players (None in the tests)
         self.rng = random.Random(seed)
         self.bot_sims = bot_sims
         self.currency = currency
@@ -172,6 +173,8 @@ class SharedTable:
             if self.is_human(seat) and self._stack_of(seat) < self.bb:
                 self._set_stack(seat, self.buy_in)
                 self.news.append({"seat": seat, "kind": "topup", "name": self._name_of(seat)})
+                if self.scores is not None:
+                    self.scores.topup(self._name_of(seat))
         for i, b in enumerate(self.bots):
             if i + 1 == GUEST and self.guest:
                 continue                                              # (that seat is the friend's now)
@@ -250,6 +253,9 @@ class SharedTable:
         for s in (HOST, GUEST):
             if self.is_human(s):
                 self.net[s] += h.result["net"][s]
+                if self.scores is not None:
+                    self.scores.add(self._name_of(s), h.result["net"][s], won=s in h.result["winners"], pot=h.result["pot"],
+                                    showdown=h.result["showdown"])
         for i, b in enumerate(self.bots):                              # bots that use reads learn from the hand
             if (b.get("traits") or {}).get("adapt") and not self.is_human(i + 1):
                 record_reads(b["reads"], self._keys, h, i + 1)
@@ -322,4 +328,4 @@ class SharedTable:
                 "currency": self.currency, "speed": self.speed, "account_buy_ins": round(mine / self.buy_in, 1) if self.buy_in else None,
                 "timer_s": 0, "online_clock": False, "strength": self.strength, "revealed": False, "chip_mode": False, "tourney": None,
                 "news": [dict(n, seat=(n["seat"] - viewer) % SEATS) for n in self.news], "bots": ["?"] * 5,
-                "version": self.version, "guest": self.guest["name"] if self.guest else None, "host_name": self.host_name}
+                "scores": self.scores.board() if self.scores is not None else [], "version": self.version, "guest": self.guest["name"] if self.guest else None, "host_name": self.host_name}

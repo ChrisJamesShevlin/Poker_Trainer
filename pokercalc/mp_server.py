@@ -17,7 +17,7 @@ import time
 from flask import Blueprint, Response, current_app, jsonify, request
 from werkzeug.serving import make_server
 
-from . import service, stakes
+from . import mp_scores, service, stakes
 from .game import IllegalAction
 from .multiplayer import GUEST, HOST, SharedTable, clean_name
 from .table import SPEEDS
@@ -29,6 +29,8 @@ _code = None
 _guest_token = None
 _listener = None                  # {"server": ..., "thread": ..., "ip": ..., "port": ...} while the guest listener runs
 _fails = []                       # times of recent wrong game codes
+_scores = None                    # the running score between the players (None: not kept, as in the tests)
+_keep_scores = True
 HOST_TOKEN = secrets.token_urlsafe(16)          # only ever put into the host's own page (served on 127.0.0.1)
 CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"        # no 0/O/1/I to misread
 GUEST_PORT = 5174
@@ -39,19 +41,29 @@ def new_code():
     return "".join(secrets.choice(CODE_ALPHABET) for _ in range(6))
 
 
+def scores():
+    global _scores
+    if not _keep_scores:
+        return None
+    if _scores is None:
+        _scores = mp_scores.Scores()
+    return _scores
+
+
 def table():
     global _table, _code
     if _table is None:
-        _table = SharedTable()
+        _table = SharedTable(scores=scores())
         _code = new_code()
     return _table
 
 
-def reset_for_tests():
-    """A fresh table, code and tokens (the tests call this)."""
-    global _table, _code, _guest_token, _fails
+def reset_for_tests(scores_path=None):
+    """A fresh table, code and tokens (the tests call this). The running score is only kept when a path is given, so a test never touches real data."""
+    global _table, _code, _guest_token, _fails, _scores, _keep_scores
     stop_sharing()
     _table, _code, _guest_token, _fails = None, None, None, []
+    _keep_scores, _scores = bool(scores_path), (mp_scores.Scores(scores_path) if scores_path else None)
     table()
 
 
@@ -305,6 +317,32 @@ def leave():
 # ------------------------------------------------------------------ the host's controls (host token only)
 def _host_only():
     return _viewer() == HOST
+
+
+def _local_only():
+    return not request.environ.get("poker.guest_port")           # a friend's listener never gets here (GuestGuard), and this checks again
+
+
+@bp.get("/api/mp/scores")
+def scores_get():
+    if not _local_only():
+        return _need(None)
+    with _lock:
+        sc = scores()
+        return jsonify(scores=sc.board() if sc else [])
+
+
+@bp.post("/api/mp/scores/reset")
+def scores_reset():
+    if not _local_only():
+        return _need(None)
+    with _lock:
+        sc = scores()
+        if sc:
+            sc.reset()
+        t = table()
+        t.version += 1
+        return jsonify(scores=[])
 
 
 @bp.get("/api/mp/host")

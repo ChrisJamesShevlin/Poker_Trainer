@@ -183,3 +183,20 @@ def test_the_host_sets_a_nickname_and_the_friend_sees_it(mp):
     assert c.post("/api/mp/settings", headers=host, json={"host_name": "Chris"}).get_json()["host_name"] == "Chris"
     assert c.get("/api/mp/state?force=1", headers=guest).get_json()["host_name"] == "Chris"
     assert c.post("/api/mp/settings", headers=guest, json={"host_name": "Hacker"}).status_code == 401      # only the host renames the host
+
+
+def test_the_score_can_be_read_and_reset_from_this_computer_only(tmp_path):
+    mp_server.reset_for_tests(tmp_path / "scores.json")
+    try:
+        c = server.app.test_client()
+        mp_server.scores().add("Chris", 500, won=True, pot=900, showdown=True)
+        got = c.get("/api/mp/scores").get_json()["scores"]
+        assert got[0]["name"] == "Chris" and got[0]["net"] == 500 and got[0]["won"] == 1
+        c2 = server.app.test_client()
+        assert c2.get("/api/mp/scores", environ_overrides={"poker.guest_port": 5174}).status_code == 401      # a friend's listener
+        assert c2.post("/api/mp/scores/reset", environ_overrides={"poker.guest_port": 5174}).status_code == 401
+        assert mp_server.scores().board()
+        assert c.post("/api/mp/scores/reset").get_json()["scores"] == []
+        assert mp_server.scores().board() == []
+    finally:
+        mp_server.reset_for_tests()

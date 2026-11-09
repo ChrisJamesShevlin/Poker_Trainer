@@ -3,5 +3,6 @@ __pycache__/
 .claude/
 poker.db
 *.pyc
+multiplayer_scores.json
 backup/
 .env

@@ -134,6 +134,9 @@ body.guest header a.nav{display:none}
 #mpCard .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:6px 0}
 #mpCard .url{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:13px;word-break:break-all}
 #mpCard select,#mpCard input{background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:8px;padding:7px 9px;font:inherit}
+.lb{width:100%;border-collapse:collapse;font-size:13px;margin-top:4px}
+.lb th{color:var(--dim);font-weight:500;text-align:right;padding:3px 5px;font-size:11.5px}.lb td{text-align:right;padding:4px 5px;border-top:1px solid var(--line)}
+.lb th:first-child,.lb td:first-child{text-align:left}.lb .up{color:#4ade80;font-weight:700}.lb .down{color:#f87171;font-weight:700}
 #joinBox{position:fixed;inset:0;background:#0b0f14ee;display:none;align-items:center;justify-content:center;z-index:50}
 #joinBox .box{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px;width:min(380px,92vw)}
 #joinBox input{width:100%;box-sizing:border-box;margin:6px 0 12px;background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:8px;padding:10px;font:inherit;font-size:17px}
@@ -170,6 +173,7 @@ body.guest header a.nav{display:none}
   </div>
   <div>
     <div class="card" id="mpCard" style="display:none"></div>
+    <div class="card" id="scoreCard" style="display:none"></div>
     <div class="card">
       <h2>Your session</h2>
       <div class="stats" id="stats"></div>
@@ -556,21 +560,37 @@ function renderLobby(){
   ['sit','setStack','rebuy','reset','buyMin','buyMax','buyIn','stackIn'].forEach(id=>$(id).disabled=lock);
   if(L.buy_in){['buyMin','buyMax','buyIn','stackIn','setStack'].forEach(id=>$(id).disabled=true);sel.buy_in=st.buy_in_max;bi.value=(sel.buy_in/100).toFixed(2)}      // Grinding: a full buy-in, fixed
 }
+const sgn=c=>(c>0?'+':c<0?'-':'')+money(Math.abs(c));
+function boardHtml(rows,reset){
+  if(!rows||!rows.length)return `<div class="dim" style="font-size:13px">No hands played together yet. Every hand adds to the running score.</div>`;
+  return `<table class="lb"><tr><th>Player</th><th>Balance</th><th>Hands</th><th>Won</th><th title="Biggest pot won">Best pot</th><th title="Biggest single-hand win / loss">Best / worst</th><th title="Free top-ups when out of chips">Top-ups</th></tr>`
+    +rows.map(r=>`<tr><td><b>${escH(r.name)}</b></td><td class="${r.net>0?'up':r.net<0?'down':''}">${sgn(r.net)}</td><td>${r.hands}</td><td>${r.won} (${r.win_pct}%)</td><td>${money(r.biggest_pot)}</td><td>${sgn(r.best_win)} / ${sgn(r.worst_loss)}</td><td>${r.topups}</td></tr>`).join('')
+    +`</table><div class="dim" style="font-size:11.5px;margin-top:4px">Balance = everything won minus everything lost since the last reset. Free top-ups never count as winnings.</div>`
+    +(reset?`<div class="row"><button class="btn ghost small" id="lbReset">Reset scores</button></div>`:'');
+}
+function bindReset(after){const b=$('lbReset');if(b)b.onclick=()=>{if(confirm('Reset the running score to zero for everyone?'))run(async()=>{await fetch('/api/mp/scores/reset',{method:'POST',headers:MP&&MP.token?{'X-MP-Token':MP.token}:{}});after()})}}
+async function loadScoreCard(){                        // the Casino page: the running score from the multiplayer table (only shown once someone has played)
+  const el=$('scoreCard');if(!el||MP)return;
+  try{const d=await (await fetch('/api/mp/scores')).json();
+    if(!d.scores||!d.scores.length){el.style.display='none';return}
+    el.style.display='block';el.innerHTML='<h2>Multiplayer scores</h2>'+boardHtml(d.scores,true);bindReset(loadScoreCard)}catch(e){}
+}
 let mpInfo=null,mpSig='',mpDraft={};
 async function loadMpInfo(){if(MP&&MP.role==='host'){try{mpInfo=await api('/api/mp/host');mpSig='';renderMP()}catch(e){}}}
 function renderMP(){
   const el=$('mpCard');if(!el||!S||!CFG)return;el.style.display='block';
   const inHand=S.started&&!S.over;
   if(MP.role==='guest'){
-    const sig='g'+S.stake+S.host_name+inHand;if(sig===mpSig)return;mpSig=sig;
+    const sig='g'+S.stake+S.host_name+inHand+JSON.stringify(S.scores);if(sig===mpSig)return;mpSig=sig;
     const st=CFG.stakes.find(x=>x.key===S.stake);
     el.innerHTML=`<h2>${escH(S.host_name)}'s table</h2><div style="font-size:14px">${escH(st?st.blinds:'')} ${GAME}, 6-max. The host chooses the blinds and the buy-in.</div>
+      <h2 style="margin-top:12px">Running score</h2>${boardHtml(S.scores,false)}
       <div class="row"><button class="btn ghost small" id="mpLeave">Leave the table</button></div>`;
     $('mpLeave').onclick=()=>{if(confirm('Leave the table?'))run(async()=>{await api('/api/mp/leave',{});try{sessionStorage.removeItem('mp_token')}catch(e){}location.reload()})};
     return;
   }
   const i=mpInfo||{};
-  const sig=JSON.stringify(['h',i,S.stake,S.buy_in,S.strength,inHand,S.guest]);if(sig===mpSig)return;mpSig=sig;
+  const sig=JSON.stringify(['h',i,S.stake,S.buy_in,S.strength,inHand,S.guest,S.scores]);if(sig===mpSig)return;mpSig=sig;
   const st=CFG.stakes.find(x=>x.key===(mpDraft.stake||S.stake))||CFG.stakes[0];
   const bi=mpDraft.buy_in!=null?mpDraft.buy_in:S.buy_in;
   el.innerHTML=`<h2>Multiplayer table</h2>
@@ -581,6 +601,7 @@ function renderMP(){
     <div style="margin-top:10px">${i.sharing?`<div class="dim" style="font-size:12.5px">Send your friend this link (they need Tailscale):</div><div class="url" id="mpUrl">${escH(i.url)}</div>
         <div class="row"><button class="btn ghost small" id="mpCopy">Copy link</button><button class="btn ghost small" id="mpStop">Stop sharing</button></div>`
       :`<button class="btn small" id="mpStart">Start sharing</button>${i.tailscale===false?'<div class="row"><input id="mpIp" placeholder="Your Tailscale address, e.g. 100.101.102.103" style="width:100%"></div>':''}<div class="dim" style="font-size:12.5px;margin-top:4px">${i.tailscale===false?'Tailscale was not found on this computer. Install it and sign in first.':'Opens the table to your friend over your private Tailscale network.'}</div>`}</div>
+    <h2 style="margin-top:14px">Running score</h2>${boardHtml(S.scores,true)}
     <h2 style="margin-top:14px">Table settings</h2>
     <div class="row"><select id="mpStake">${CFG.stakes.map(x=>`<option value="${x.key}" ${x.key===st.key?'selected':''}>${escH(x.blinds)} (buy-in ${escH(x.buy_in)})</option>`).join('')}</select></div>
     <div class="row"><label class="dim" style="font-size:12px">Buy-in for everyone</label><input id="mpBuy" type="number" step="0.01" style="width:110px" value="${(bi/100).toFixed(2)}"></div>
@@ -588,6 +609,7 @@ function renderMP(){
     <div class="row"><button class="btn small" id="mpApply" ${inHand?'disabled':''}>Apply</button><span class="dim" style="font-size:12px">${inHand?'Finish the hand first.':'Changes start a fresh table.'}</span></div>`;
   const sg=$('mpStrength');CFG.strengths.forEach(o=>{const b=document.createElement('button');b.textContent=o.label;b.className=(mpDraft.strength||S.strength)===o.key?'on':'';b.onclick=()=>{mpDraft.strength=o.key;mpSig='';renderMP()};sg.appendChild(b)});
   const cu=CFG.strengths.find(o=>o.key===(mpDraft.strength||S.strength));$('mpStrengthText').textContent=cu?cu.text:'';
+  bindReset(async()=>{mpSig='';await applyResponse(await api('/api/trainer/state?force=1'))});
   $('mpStake').onchange=e=>{mpDraft.stake=e.target.value;const s2=CFG.stakes.find(x=>x.key===e.target.value);mpDraft.buy_in=s2.buy_in_max;mpSig='';renderMP()};
   $('mpBuy').oninput=e=>{mpDraft.buy_in=Math.round(parseFloat(e.target.value||0)*100)};
   $('mpApply').onclick=()=>run(async()=>{const body={stake:mpDraft.stake||S.stake,buy_in:mpDraft.buy_in!=null?mpDraft.buy_in:S.buy_in,strength:mpDraft.strength||S.strength};
@@ -667,6 +689,7 @@ setInterval(()=>{
   if(left<=0&&!busy)run(async()=>applyResponse(await api('/api/trainer/state')));
 },250);
 async function boot(){
+  loadScoreCard();
   CFG=await api('/api/trainer/config');const st=await api('/api/trainer/state');
   document.body.classList.toggle('noanim',st.speed==='instant');S=st;seedSeen(S);render();
   if(MP&&MP.role==='host'){

@@ -227,3 +227,21 @@ def test_a_players_own_action_is_a_step_too_so_both_pages_can_show_the_chips():
     frames = t.pop_frames(HOST)
     assert frames and frames[0]["delay"] == 0
     assert t.pop_frames(GUEST)
+
+
+def test_the_running_score_adds_up_hands_wins_and_topups(tmp_path):
+    from pokercalc.mp_scores import Scores
+    sc = Scores(tmp_path / "s.json")
+    t = SharedTable(seed=3, scores=sc)
+    t.join("Jo")
+    for n in range(6):
+        t.start_hand(seed=n + 1)
+        while not t.hand.over:
+            seat = t.hand.to_act
+            t.act(seat, "check" if t.hand.legal(seat)["can_check"] else "call" if t.hand.legal(seat)["to_call"] else "fold")
+    rows = {r["name"]: r for r in sc.board()}
+    assert set(rows) == {"Host", "Jo"} and all(r["hands"] == 6 for r in rows.values())
+    assert all(0 <= r["won"] <= 6 and r["biggest_pot"] >= 0 for r in rows.values())
+    assert Scores(tmp_path / "s.json").board() == sc.board()          # kept on disk, found again next time
+    sc.reset()
+    assert sc.board() == [] and Scores(tmp_path / "s.json").board() == []
