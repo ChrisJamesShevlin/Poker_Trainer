@@ -68,6 +68,8 @@ def run(con):
     folder = data_dir()
     try:
         export_data(con, folder)
+        if shutil.which("git") is None:                      # (the packaged Windows app: nothing to commit to, and nothing to explain)
+            return "Your results are saved on this computer."
         repo = _toplevel(folder)
         if repo is None:
             return f"Backup written to {folder} (not in a git repository, so not committed)."

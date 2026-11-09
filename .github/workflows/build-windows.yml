@@ -1,0 +1,59 @@
+# Builds the double-click Windows app (a zip with PokerStudy.exe). Run it by hand from the Actions tab, or push a tag like v1.0.0 to also publish a release.
+name: Build Windows app
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: python -m pip install flask eval7 pyinstaller pytest
+      - name: Tests
+        continue-on-error: true      # (the build below is checked on its own; a test that only fails on Windows should not stop the download)
+        run: python -m pytest tests -q
+      - name: Build the app
+        run: >
+          pyinstaller --noconfirm --clean --onedir --name PokerStudy --collect-all eval7
+          --add-data "static;static"
+          --add-data "pokercalc/bb_equity.json;pokercalc"
+          --add-data "pokercalc/ranking.json;pokercalc"
+          launcher.py
+      - name: Check it starts (and keeps its save outside the program folder)
+        shell: pwsh
+        run: |
+          $env:POKER_DATA_DIR = "$env:RUNNER_TEMP\pokerdata"
+          $p = Start-Process -FilePath "dist\PokerStudy\PokerStudy.exe" -PassThru
+          Start-Sleep -Seconds 12
+          $r = Invoke-WebRequest -Uri "http://127.0.0.1:5173/api/session" -UseBasicParsing
+          if ($r.StatusCode -ne 200) { throw "the app did not answer" }
+          $t = Invoke-WebRequest -Uri "http://127.0.0.1:5173/trainer" -UseBasicParsing
+          if ($t.Content -notmatch "Casino") { throw "the Casino page did not load" }
+          if (-not (Test-Path "$env:RUNNER_TEMP\pokerdata\holdem\poker.db")) { throw "no save file was made in the data folder" }
+          Stop-Process -Id $p.Id -Force
+      - name: Zip
+        shell: pwsh
+        run: |
+          Copy-Item windows\README-WINDOWS.txt dist\PokerStudy\
+          Compress-Archive -Path dist\PokerStudy -DestinationPath PokerStudy-windows.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PokerStudy-windows
+          path: PokerStudy-windows.zip
+      - name: Publish a release (tags only)
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" PokerStudy-windows.zip --title "Poker Study Tool ${{ github.ref_name }}" --notes "Windows download. Unzip it, then double-click PokerStudy.exe (README-WINDOWS.txt is inside)."

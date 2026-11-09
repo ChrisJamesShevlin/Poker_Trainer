@@ -15,6 +15,15 @@ Licence: MIT (see `LICENSE`).
 Limits: it knows nothing about how your opponents play, it is not a GTO solver, and the
 preflop guide and check/call/raise suggestion are simple rules of thumb.
 
+## Windows download (no Python needed)
+
+Go to the **Releases** page of this repository and download `PokerStudy-windows.zip`. Unzip it and double-click `PokerStudy.exe`: a black window opens
+and the game appears in your browser (close the black window to quit). Windows may warn that the program is from an unknown publisher the first time
+(**More info**, then **Run anyway**). Your game is saved on your own computer, in `%APPDATA%\PokerStudyTool`, so updating the program never loses it.
+
+The zip is built by the workflow in `.github/workflows/build-windows.yml` (run it from the Actions tab, or push a tag such as `v1.0.0` to publish a release).
+To run from the code instead: `pip install -r requirements.txt`, then `python launcher.py` (or `python server.py`).
+
 ## Screenshots
 
 **Casino: a flop decision at a £0.02/£0.05 table.** Each seat shows its last action, "For the RTA" gives the numbers to type into the RTA page, and the other players take a moment to act.
