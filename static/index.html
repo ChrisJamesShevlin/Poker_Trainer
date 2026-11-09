@@ -143,7 +143,6 @@ body.guest .tab[data-tab="analytics"],body.guest a[href="/grind"],body.guest a[h
       <div class="controls">
         <div class="field"><label>Pot (as shown on the table)</label><input id="pot" type="number" inputmode="decimal" step="any" min="0"></div>
         <div class="field"><label>Bet to call: what you must put in (0 = check)</label><input id="call" type="number" inputmode="decimal" step="any" min="0" value="0"></div>
-        <div class="field wide"><label>The pot you type</label><div class="seg" id="potSeg"></div></div>
         <div class="field wide"><label>Opponents</label><div class="seg" id="oppSeg"></div></div>
         <div class="field wide"><label id="posLbl">Seat</label><div class="seg" id="posSeg"></div></div>
         <div class="field wide"><label>Table size</label><div class="seg" id="sizeSeg"></div></div>
@@ -224,7 +223,6 @@ const store={get(k,d){try{const v=localStorage.getItem(k);return v===null?d:JSON
 
 let slots=Array(7).fill(null);          // 0,1 hole; 2..6 board
 let tableSize=store.get('tsize',6), seatIdx=store.get('seat',0), opps=store.get('opps',2), rangePct=store.get('range','auto'), table=store.get('table','normal'), oppType=store.get('opptype','normal'), raiser='', multi=false, pos=store.get('pos','BTN');
-let potIncl=store.get('potincl',true);      // does the pot you type already include the bet you are facing? (yes, as on the Casino table)
 let waiting=false, startStack=null, contrib=0, pendingAct=null;
 let decisions=[], curDec=null;   // one entry per button pressed this hand: what the tool said vs what you did
 let facing=false, taken=null, last=null, pendingRank=null, reqId=0, timer=null, session=null;
@@ -247,7 +245,6 @@ function updSeat(){$('posLbl').textContent='Seat: '+pos}
 function buildControls(){
   pos=norm(pos,SEATS[tableSize]);
   seg('oppSeg',[1,2,3,4,5,6].map(n=>[n,n]),()=>opps,v=>{opps=v;store.set('opps',v)});
-  seg('potSeg',[['Pot as shown (includes their bet)',true],['Pot before their bet',false]],()=>potIncl,v=>{potIncl=v;store.set('potincl',v)});
   seg('rangeSeg',RANGES,()=>rangePct,v=>{rangePct=v;store.set('range',v)});
   seg('tableSeg',TABLES,()=>table,v=>{table=v;store.set('table',v)});
   seg('oppTypeSeg',OPPTYPES,()=>oppType,v=>{oppType=v;store.set('opptype',v)});
@@ -326,7 +323,7 @@ function renderAll(){renderSlots();const nb=slots.slice(2).filter(Boolean).lengt
 /* ---------- calculation ---------- */
 function state(){
   return {hole:slots.slice(0,2).filter(Boolean), board:slots.slice(2).filter(Boolean),
-    pot:(+$('pot').value||0)+(potIncl?0:(+$('call').value||0)), call:+$('call').value||0, opps, range_mode:rangePct, raiser, table, opp_type:oppType, multi_street:multi,
+    pot:+$('pot').value||0, call:+$('call').value||0, opps, range_mode:rangePct, raiser, table, opp_type:oppType, multi_street:multi,
     position:pos, facing:bbKnown()?false:facing, stack:+$('stack').value||null, bb:sessBB()||(+$('bbIn').value||null)};
 }
 function schedule(){clearTimeout(timer);timer=setTimeout(calc,120)}
