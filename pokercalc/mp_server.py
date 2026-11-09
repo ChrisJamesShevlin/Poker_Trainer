@@ -20,6 +20,7 @@ from werkzeug.serving import make_server
 from . import service, stakes
 from .game import IllegalAction
 from .multiplayer import GUEST, HOST, SharedTable, clean_name
+from .table import SPEEDS
 
 bp = Blueprint("multiplayer", __name__)
 _lock = threading.RLock()
@@ -161,7 +162,7 @@ def _need(viewer):
 
 def _reply(t, viewer, **extra):
     st = t.state(viewer)
-    st.update(mp=True, role="host" if viewer == HOST else "guest", mode="multiplayer", locks={}, frames=[], notices=[], **extra)
+    st.update(mp=True, role="host" if viewer == HOST else "guest", mode="multiplayer", locks={}, frames=t.pop_frames(viewer), notices=[], **extra)
     return jsonify(st)
 
 
@@ -197,7 +198,7 @@ def config():
     with _lock:
         t = table()
         return jsonify(stakes=stakes.ladder(t.currency), strengths=stakes.strength_options(), currencies=list(stakes.CURRENCIES),
-                       min_buy_in_bb=stakes.MIN_BUY_IN_BB, max_buy_in_bb=stakes.MAX_BUY_IN_BB, timers=[0], speeds=["instant"],
+                       min_buy_in_bb=stakes.MIN_BUY_IN_BB, max_buy_in_bb=stakes.MAX_BUY_IN_BB, timers=[0], speeds=list(SPEEDS),
                        mode="multiplayer", locks={})
 
 
@@ -369,6 +370,8 @@ def settings():
                 t.set_buy_in(int(d["buy_in"]))
             if d.get("strength") and d["strength"] != t.strength:
                 t.set_strength(d["strength"])
+            if d.get("speed") and d["speed"] != t.speed:
+                t.set_speed(d["speed"])
             if d.get("currency"):
                 t.set_currency(d["currency"])
             if d.get("host_name") is not None:

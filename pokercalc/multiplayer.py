@@ -10,7 +10,7 @@ import random
 from . import stakes
 from .bots import Bot, record_reads
 from .game import Hand, IllegalAction, best_five, hand_name, likely_opponents, service_input
-from .table import BOT_REBUY_BELOW_BB, BOT_SIMS
+from .table import BOT_REBUY_BELOW_BB, BOT_SIMS, DEAL_PAUSE_S, MIN_STEP_S, SPEEDS, STREET_PAUSE_S
 
 SEATS = 6
 HOST, GUEST = 0, 1
@@ -23,7 +23,7 @@ def clean_name(name, fallback):
 
 
 class SharedTable:
-    def __init__(self, stake="0.01/0.02", buy_in=None, strength="balanced", seed=None, bot_sims=BOT_SIMS, currency="£"):
+    def __init__(self, stake="0.01/0.02", buy_in=None, strength="balanced", seed=None, bot_sims=BOT_SIMS, currency="£", speed="normal"):
         self.rng = random.Random(seed)
         self.bot_sims = bot_sims
         self.currency = currency
@@ -38,6 +38,8 @@ class SharedTable:
         self.guest_away = False               # the friend left (or was removed) in the middle of a hand: their seat folds out, then goes to a bot
         self.version = 0                      # goes up whenever anything changes, so the pages only redraw when they must
         self.host_name = "Host"
+        self.speed = speed if speed in SPEEDS else "normal"   # how long the bots take to act (the host sets it)
+        self.frames = {HOST: [], GUEST: []}   # steps of the hand each player's page has not played yet
         self.stake = None
         self._sit(stake, buy_in)
 
@@ -64,6 +66,24 @@ class SharedTable:
             raise ValueError(f"unknown table strength {self.strength!r}")
         self.bots = [dict(b, stack=self.buy_in) for b in stakes.population(self.stake, self.rng, strength=self.strength)]
         self.version += 1
+
+    def set_speed(self, speed):
+        if speed not in SPEEDS:
+            raise ValueError(f"game speed must be one of {', '.join(SPEEDS)}")
+        self.speed = speed
+        self.version += 1
+
+    def _snap(self, delay):
+        """The table as each player's page shows it at this moment, and how long to wait before showing it."""
+        for v in (HOST, GUEST):
+            st = self.state(v)
+            for k in ("legal", "for_tool", "seconds_left"):
+                st.pop(k, None)
+            self.frames[v].append({"delay": round(delay, 2), "state": st})
+
+    def pop_frames(self, viewer):
+        out, self.frames[viewer] = self.frames[viewer], []
+        return out
 
     def set_stake(self, stake, buy_in=None):
         self._between_hands()
@@ -162,6 +182,8 @@ class SharedTable:
         stacks = [self._stack_of(s) for s in range(SEATS)]
         self.hand = Hand(stacks, button=self.button, sb=self.sb, bb=self.bb, seed=seed)
         self.last = None
+        self.frames = {HOST: [], GUEST: []}
+        self._snap(0.0)
         self._keys = {s: ("host" if s == HOST else "guest" if (s == GUEST and self.guest) else self.bots[s - 1]["persona"]["name"]) for s in range(SEATS)}
         self._bots = {}
         for s in range(1, SEATS):
@@ -169,7 +191,7 @@ class SharedTable:
                 b = self.bots[s - 1]
                 self._bots[s] = Bot(b["style"], seed=seed * 7 + s, sims=self.bot_sims, loose_mult=b["loose_mult"], traits=b.get("traits"),
                                     reads=b.setdefault("reads", {}), keys=self._keys)
-        self._run_bots()
+        self._run_bots(opening=True)
         self.version += 1
 
     def _set_stack(self, seat, chips):
@@ -186,19 +208,40 @@ class SharedTable:
         if h is None or h.over or h.to_act != seat or not self.is_human(seat):
             raise IllegalAction("not your turn")
         h.act(seat, action)
+        self._snap(0.0)                                                 # a step for the human's own action too (its chips fly)
         self._run_bots()
         self.version += 1
 
-    def _run_bots(self):
+    def _run_bots(self, opening=False):
         h = self.hand
+        factor = SPEEDS[self.speed]
+        street, first = h.street, opening
         while not h.over and (not self.is_human(h.to_act) or (h.to_act == GUEST and self.guest_away)):
             s = h.to_act
+            delay = 0.0
             if self.is_human(s):                                        # the friend has gone: fold (or check) their seat
                 h.act(s, "check" if h.legal(s)["can_check"] else "fold")
             else:
-                h.act(s, self._bots[s].decide(h, s))
+                bot = self._bots[s]
+                act = bot.decide(h, s)
+                if factor:                                              # the same think times as the local Casino
+                    delay = bot.think_time(h, s, act) * factor
+                    if first:
+                        delay += DEAL_PAUSE_S * factor
+                    if h.street != street:
+                        delay += STREET_PAUSE_S * factor
+                    delay = max(MIN_STEP_S, delay)
+                h.act(s, act)
+            first, street = False, h.street
+            self._snap(delay)
         if h.over:
             self._finish()
+            for v in (HOST, GUEST):                                     # the last step carries the result
+                if self.frames[v]:
+                    st = self.state(v)
+                    for k in ("legal", "for_tool", "seconds_left"):
+                        st.pop(k, None)
+                    self.frames[v][-1]["state"] = st
 
     def _finish(self):
         h = self.hand
@@ -276,7 +319,7 @@ class SharedTable:
         mine = self._stack_of(viewer)
         return {"stake": self.stake, "sb": self.sb, "bb": self.bb, "ante": 0, "tier": self.tier, "buy_in": self.buy_in,
                 "hero_stack": mine, "hero_net": self.net[viewer], "hand_no": self.hand_no, "bankroll": 0, "account": mine, "reloads": 0,
-                "currency": self.currency, "speed": "instant", "account_buy_ins": round(mine / self.buy_in, 1) if self.buy_in else None,
+                "currency": self.currency, "speed": self.speed, "account_buy_ins": round(mine / self.buy_in, 1) if self.buy_in else None,
                 "timer_s": 0, "online_clock": False, "strength": self.strength, "revealed": False, "chip_mode": False, "tourney": None,
                 "news": [dict(n, seat=(n["seat"] - viewer) % SEATS) for n in self.news], "bots": ["?"] * 5,
                 "version": self.version, "guest": self.guest["name"] if self.guest else None, "host_name": self.host_name}

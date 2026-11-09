@@ -197,3 +197,33 @@ def test_players_choose_their_own_nicknames_and_they_are_tidied():
     assert t.guest["name"] == "Sam the Man"
     t.start_hand()
     assert t.state(HOST)["seats"][1]["name"] == "Sam the Man"
+
+
+def test_bots_take_their_time_like_the_local_casino_and_both_players_get_the_steps():
+    t = SharedTable(seed=3)
+    t.join("Jo")
+    t.start_hand(seed=5)
+    host, guest = t.pop_frames(HOST), t.pop_frames(GUEST)
+    assert len(host) == len(guest) > 1 and sum(f["delay"] for f in host) > 1.0
+    assert host[0]["state"]["seats"][0]["hole"] != guest[0]["state"]["seats"][0]["hole"]      # each sees their own seat at the bottom
+    assert t.pop_frames(HOST) == []                                                          # played once
+
+
+def test_instant_speed_has_no_pauses():
+    t = SharedTable(seed=3, speed="instant")
+    t.start_hand(seed=5)
+    assert all(f["delay"] == 0 for f in t.pop_frames(HOST))
+
+
+def test_a_players_own_action_is_a_step_too_so_both_pages_can_show_the_chips():
+    t = SharedTable(seed=3)
+    t.join("Jo")
+    t.start_hand(seed=5)
+    t.pop_frames(HOST), t.pop_frames(GUEST)
+    seat = t.hand.to_act
+    if not t.is_human(seat):
+        pytest.skip("bots acted first in this deal")
+    t.act(seat, "call" if t.hand.legal(seat)["to_call"] else "check")
+    frames = t.pop_frames(HOST)
+    assert frames and frames[0]["delay"] == 0
+    assert t.pop_frames(GUEST)
