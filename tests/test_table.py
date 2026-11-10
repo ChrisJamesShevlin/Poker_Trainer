@@ -258,3 +258,27 @@ def test_a_pot_won_without_a_showdown_says_so():
         pytest.skip("every hand went to showdown")
     L = t.last
     assert "hands" not in L and len(L["winners"]) == 1 and L["won"] == {L["winners"][0]: L["pot"]}
+
+
+def test_session_is_this_sitting_and_career_total_keeps_running():
+    t = table()
+    for _ in range(4):
+        start_until_hero_to_act(t)
+        hero_passes(t)
+    assert t.session_net == t.hero_net
+    career, session = t.hero_net, t.session_net
+    t.cash_out()
+    assert (t.session_net, t.hero_net) == (session, career)                 # still on show after cashing out
+    t.rebuy()                                                               # sitting back down: a new session, the career total carries on
+    assert t.session_net == 0 and t.hero_net == career
+    start_until_hero_to_act(t)
+    assert t.session_net == 0 and t.hero_net == career
+    hero_passes(t)
+    assert t.hero_net - career == t.session_net
+    t.set_stake("0.05/0.10")                                                 # a new stake is a new seat
+    assert t.session_net == 0
+    back = Table.from_dict(t.to_dict(), seed=2, bot_sims=10)
+    assert (back.session_net, back.hero_net) == (t.session_net, t.hero_net)
+    old = t.to_dict()
+    old.pop("session_net")
+    assert Table.from_dict(old, seed=2, bot_sims=10).session_net == 0       # an older save has only the career total
