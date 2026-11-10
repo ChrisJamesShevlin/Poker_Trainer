@@ -500,7 +500,7 @@ function renderLog(){
 function renderStats(){
   if(!S)return;
   const net=S.hero_net;
-  $('stats').innerHTML=`<div><b>${S.hand_no}</b><span>Hands</span></div><div><b class="${net>0?'pos':net<0?'neg':''}">${net>0?'+':net<0?'-':''}${fmt(Math.abs(net))}</b><span>Session ${(net/S.bb).toFixed(1)}bb</span></div><div><b>${fmt(S.hero_stack)}</b><span>Your stack</span></div>`;
+  $('stats').innerHTML=`<div><b>${S.hand_no}</b><span>Hands</span></div><div><b class="${net>0?'pos':net<0?'neg':''}">${net>0?'+':net<0?'-':''}${fmt(Math.abs(net))}</b><span>Career total ${(net/S.bb).toFixed(1)}bb</span></div><div><b>${fmt(S.hero_stack)}</b><span>Your stack</span></div>`;
   if(S.mp){$('acctStat').textContent=S.role==='host'?(S.guest?`${S.guest} is at your table`:'Waiting for your friend'):`Playing at ${S.host_name}'s table`}
   else $('acctStat').innerHTML=S.chip_mode?`Account <b>${money(S.grind_account)}</b> (shared with cash)`:`Account <b>${fmt(S.account)}</b> &middot; ${fmt(S.bankroll)} off the table &middot; ${S.account_buy_ins} buy-ins`;
   const st=CFG.stakes.find(x=>x.key===S.stake);
