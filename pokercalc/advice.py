@@ -164,7 +164,7 @@ def _postflop(eq, pot, call, opps, stack=None, position="BTN", board=(), hold=No
     # ---- facing a bet
     allin = stack is not None and call >= stack
     margin = eq - req
-    fold_line = {"folds": 0.01, "calls": -0.04}.get(opp_type, -0.02)   # tighter vs a player who rarely bluffs
+    fold_line = {"folds": 0.01}.get(opp_type, -0.02)   # tighter vs a player who folds a lot (his bets are strong). A caller gets the normal line: he does not bluff more, so never call looser
     if margin < fold_line:
         deep = stack is not None and stack >= 6 * call
         if drawing and deep and street < 5 and margin >= -0.08:
