@@ -320,9 +320,12 @@ def summary(con, cur="$"):
         best_row = max(best_row, wins_row)
     win_idx = max((keys.index(r["stake"]) for r in won_t), default=-1)
 
+    kept = set(store.kv_load(con, "grind_kept", []))          # badges earned before a reset: yours for good
+
     def bd(group, id_, name, text, chip, have, goal=1, secret=False, hint="", kind="achievement"):
+        keep = id_ in kept
         badges.append(dict(id=id_, name=name, text=text, kind=kind, group=group, chip=chip, chip_text=CHIP_TEXT[chip], rarity=RARITY[chip],
-                           secret=secret, hint=hint, earned=have >= goal, progress=min(have, goal), goal=goal))
+                           secret=secret, hint=hint, earned=keep or have >= goal, progress=goal if keep else min(have, goal), goal=goal))
     plural = lambda n, w: f"{n:,} {w}{'' if n == 1 else 's'}"
 
     G = "Getting started"
@@ -513,10 +516,12 @@ def take_pending(con):
 
 
 def reset(con):
-    """Start Grinding again from NL2: levels, badges and counts. Nothing is deleted: hands and sessions stay exactly as they
-    are (so Analytics is untouched); they just stop counting towards the ladder."""
+    """Start Grinding again from NL2: levels and counts go back to zero, but the badges you have earned are kept. Nothing is deleted:
+    hands and sessions stay exactly as they are (so Analytics is untouched); they just stop counting towards the ladder."""
     import time
+    kept = sorted({b["id"] for b in summary(con)["badges"] if b["earned"] and b["kind"] != "completionist"})   # (before the line is drawn; that one is worked out from the rest)
+    store.kv_save(con, "grind_kept", kept)
     store.kv_save(con, "grind_reset_ts", time.time())
-    store.kv_save(con, "grind_known", [])
+    store.kv_save(con, "grind_known", kept)                     # known, so keeping them is not announced as new
     store.kv_save(con, "grind_pending", [])
     store.kv_save(con, "grind_badge_version", BADGE_VERSION)

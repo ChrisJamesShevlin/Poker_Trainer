@@ -177,7 +177,7 @@ async function load(){
   });
 }
 $('resetBtn').onclick=async()=>{
-  if(!confirm('Reset all Grinding progress?\n\nThis sends your levels, badges and Casino account back to the start (the starter balance at NL2).\nYour saved hands and your Analytics are NOT touched.'))return;
+  if(!confirm('Reset all Grinding progress?\n\nThis sends your levels and Casino account back to the start (a new starter balance at NL2).\nYour badges and achievements are kept, and so are your saved hands and your Analytics.'))return;
   const r=await fetch('/api/grind/reset',{method:'POST'});const d=await r.json();
   if(!r.ok){toast(d.error||'Could not reset');return}
   load();

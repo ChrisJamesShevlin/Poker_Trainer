@@ -574,11 +574,13 @@ def test_reset_starts_the_ladder_again_but_deletes_nothing_and_leaves_analytics_
     counts = lambda: tuple(c.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0] for t in ("trainer_hands", "hands", "sessions"))
     n_before = counts()
     assert grind.summary(c)["cleared"] == 1 and any(b["earned"] for b in grind.summary(c)["badges"])
+    earned_before = {b["id"] for b in grind.summary(c)["badges"] if b["earned"]}
     r = client.post("/api/grind/reset")
     assert r.status_code == 200
     g = grind.summary(c)
     assert g["cleared"] == 0 and g["total_hands"] == 0 and g["levels"][0]["status"] == "current" and g["levels"][0]["hands"] == 0
-    assert g["levels"][0]["rta_decisions"] == 0 and not any(b["earned"] for b in g["badges"])
+    assert g["levels"][0]["rta_decisions"] == 0
+    assert {b["id"] for b in g["badges"] if b["earned"]} == earned_before                  # badges and achievements are yours for good
     assert counts() == n_before                                                        # nothing was deleted
     assert json.dumps(analytics.summary(c), sort_keys=True, default=str) == before_an     # Analytics is exactly as it was
     st = client.get("/api/trainer/state").get_json()
@@ -598,7 +600,8 @@ def test_progress_after_a_reset_counts_again_from_zero(client):
     c.commit()
     g = grind.summary(c)
     assert g["total_hands"] == 3 and g["levels"][0]["hands"] == 3 and g["levels"][0]["status"] == "current"
-    assert [n["id"] for n in grind.check_new(c)] and {b["id"] for b in g["badges"] if b["earned"]} >= {"sat-down", "pots-1"}
+    assert {b["id"] for b in g["badges"] if b["earned"]} >= {"sat-down", "pots-1"}
+    assert grind.check_new(c) == []                                                   # (already yours: nothing is announced a second time)
 
 
 def test_reset_is_refused_in_the_middle_of_a_hand(client):
@@ -1259,3 +1262,17 @@ def test_real_site_tournaments_do_not_count_for_the_ladder_badges(client):
         cash_finish(place=1, stake="", prize=50000, source="rta")
     b = tbadges()
     assert not b["tprofit"]["earned"] and not b["tstreak-3"]["earned"] and b["tplayed-50"]["progress"] == 0
+
+
+def test_reset_keeps_earned_badges_even_after_more_play_and_a_second_reset(client):
+    c = server.db()
+    clear_first_level(c)
+    earned = {b["id"] for b in grind.summary(c)["badges"] if b["earned"]}
+    assert earned
+    client.post("/api/grind/reset")
+    client.post("/api/grind/reset")
+    now = {b["id"] for b in grind.summary(c)["badges"] if b["earned"]}
+    assert earned <= now
+    g = grind.summary(c)
+    assert g["cleared"] == 0 and g["total_hands"] == 0                                # the ladder itself starts again
+    assert [b for b in g["badges"] if b["id"] == "sat-down"][0]["progress"] == 1
