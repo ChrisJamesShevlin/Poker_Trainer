@@ -153,6 +153,18 @@ def reset_time(con):
     return store.kv_load(con, "grind_reset_ts", 0.0)
 
 
+def career(con):
+    """Your Grinding career since the last reset: the hands played, what they won or lost (chips, and big blinds), counted the way the Grinding
+    page counts them. The Casino card shows exactly these, so the two always agree."""
+    hands, net, net_bb = 0, 0, 0.0
+    for r in con.execute("SELECT stake, net FROM trainer_hands WHERE ts > ? AND COALESCE(practice, 0) = 0", (reset_time(con),)):
+        if r["stake"] in stakes.STAKES:
+            hands += 1
+            net += r["net"]
+            net_bb += r["net"] / stakes.STAKES[r["stake"]]["bb"]
+    return {"hands": hands, "net": net, "net_bb": round(net_bb, 1)}
+
+
 def _rta_rows(con):
     """What the calculator logged: {stake: [(ts, decisions, followed), ...]} from its sessions and hands."""
     out = {}

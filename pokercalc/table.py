@@ -60,6 +60,7 @@ class Table:
         self.tourney = None                 # the tournament in progress (or just finished), if this table is playing one
         self.reloads = 0                    # how many times you went bust and were given a fresh starter balance
         self.frames = []                    # steps of the hand so far that the page has not played yet
+        self.session_hands = 0                     # hands since you sat down (the Casino shows it next to the session result)
         self.hand_no, self.hero_net, self.session_net, self.button = 0, 0, 0, 0     # hero_net: every hand since the last reset; session_net: since you sat down
         self.timer_s = 0
         self.online_clock = False           # True: the standard online clock (10s preflop, 15s per street) instead of timer_s
@@ -93,7 +94,7 @@ class Table:
             raise ValueError(f"You only have {self._money(cash)} in your account.")
         self.stake, self.sb, self.bb, self.tier = stake, st["sb"], st["bb"], st["tier"]
         self.buy_in, self.hero_stack, self.bankroll = want, want, cash - want
-        self.session_net = 0                                   # a new seat is a new session
+        self.session_net = self.session_hands = 0              # a new seat is a new session
         self._new_bots()
 
     def _new_bots(self):
@@ -188,7 +189,7 @@ class Table:
     def _rejoin(self):
         """Sitting back down after cashing out means a new table: new players, and their level is hidden again."""
         if self.revealed:
-            self.session_net = 0                                   # sitting back down after cashing out starts a new session
+            self.session_net = self.session_hands = 0              # sitting back down after cashing out starts a new session
             self._new_bots()
 
     def set_hero_stack(self, chips):
@@ -298,7 +299,7 @@ class Table:
         self.hero_stack, self.bankroll, self.buy_in = sc["start_chips"], 0, sc["start_chips"]
         self.sb, self.bb, self.ante = sc["levels"][0]
         self.button = self.rng.randrange(6)
-        self.hand, self.last, self.hand_no, self.hero_net, self.session_net = None, None, 0, 0, 0
+        self.hand, self.last, self.hand_no, self.hero_net, self.session_net, self.session_hands = None, None, 0, 0, 0, 0
         self.tourney = {"stake": stake, "level": 0, "hands_in_level": 0, "hands": 0, "knockouts": 0, "finished": False, "hero_place": None,
                         "buy_in": fee, "size": size, "paid": mtt.paid_places(size), "prizes": mtt.prize_list(size * fee, size),
                         "field": f, "hero_seats": seats, "busted_now": [], "pending": False, "final_table": False, "heads_up": False,
@@ -461,6 +462,7 @@ class Table:
             b["stack"] = h.stack[i + 1]
         self.hero_net += h.result["net"][self.HERO]
         self.session_net += h.result["net"][self.HERO]
+        self.session_hands += 1
         for i, b in enumerate(self.bots):                       # the players who use reads learn from this hand
             if (b.get("traits") or {}).get("adapt") and not b.get("empty"):
                 record_reads(b["reads"], self._keys, h, i + 1)
@@ -554,7 +556,7 @@ class Table:
     def _summary(self):
         total = self.bankroll + self.hero_stack
         return {"stake": self.stake, "sb": self.sb, "bb": self.bb, "ante": self.ante, "tier": self.tier, "buy_in": self.buy_in,
-                "hero_stack": self.hero_stack, "hero_net": self.hero_net, "session_net": self.session_net, "hand_no": self.hand_no,
+                "hero_stack": self.hero_stack, "hero_net": self.hero_net, "session_net": self.session_net, "session_hands": self.session_hands, "hand_no": self.hand_no,
                 "bankroll": self.bankroll, "account": total, "reloads": self.reloads, "currency": self.currency, "speed": self.speed,
                 "account_buy_ins": round(total / self.buy_in, 1) if self.buy_in else None,
                 "timer_s": self.clock_seconds(), "online_clock": self.online_clock, "strength": self.strength,
@@ -566,7 +568,7 @@ class Table:
     def to_dict(self):
         """Settings, stacks and bots (not a hand in progress: that hand is simply not saved)."""
         return {"stake": self.stake, "buy_in": self.buy_in, "timer_s": self.timer_s, "online_clock": self.online_clock, "hero_stack": self.hero_stack,
-                "hero_net": self.hero_net, "session_net": self.session_net, "hand_no": self.hand_no, "button": self.button, "strength": self.strength,
+                "hero_net": self.hero_net, "session_net": self.session_net, "session_hands": self.session_hands, "hand_no": self.hand_no, "button": self.button, "strength": self.strength,
                 "bankroll": self.bankroll, "reloads": self.reloads, "revealed": self.revealed, "tourney": self.tourney, "currency": self.currency,
                 "speed": self.speed, "bots": self.bots}
 
@@ -588,6 +590,7 @@ class Table:
             t.sb, t.bb, t.ante = t.tourney["levels"][t.tourney["level"]]
         t.hero_stack, t.bankroll = d["hero_stack"], bankroll             # (built with a huge account so any saved state loads)
         t.hero_net, t.hand_no, t.button = d["hero_net"], d["hand_no"], d["button"]
+        t.session_hands = d.get("session_hands", 0)
         t.session_net = d.get("session_net", 0)             # (an older save had only the career total: this session starts now)
         t.bots = [dict(b) for b in d["bots"]]
         taken = {b["persona"]["name"] for b in t.bots if b.get("persona")}

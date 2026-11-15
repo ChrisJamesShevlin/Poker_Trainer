@@ -270,11 +270,11 @@ def test_session_is_this_sitting_and_career_total_keeps_running():
     t.cash_out()
     assert (t.session_net, t.hero_net) == (session, career)                 # still on show after cashing out
     t.rebuy()                                                               # sitting back down: a new session, the career total carries on
-    assert t.session_net == 0 and t.hero_net == career
+    assert t.session_net == 0 and t.hero_net == career and t.session_hands == 0
     start_until_hero_to_act(t)
     assert t.session_net == 0 and t.hero_net == career
     hero_passes(t)
-    assert t.hero_net - career == t.session_net
+    assert t.hero_net - career == t.session_net and t.session_hands == 1
     t.set_stake("0.05/0.10")                                                 # a new stake is a new seat
     assert t.session_net == 0
     back = Table.from_dict(t.to_dict(), seed=2, bot_sims=10)

@@ -1276,3 +1276,16 @@ def test_reset_keeps_earned_badges_even_after_more_play_and_a_second_reset(clien
     g = grind.summary(c)
     assert g["cleared"] == 0 and g["total_hands"] == 0                                # the ladder itself starts again
     assert [b for b in g["badges"] if b["id"] == "sat-down"][0]["progress"] == 1
+
+
+def test_the_casino_shows_the_same_career_hands_and_money_as_the_grinding_page(client):
+    c = server.db()
+    clear_first_level(c)
+    st = client.get("/api/trainer/state").get_json()
+    g = grind.summary(c)
+    assert st["career_hands"] == g["total_hands"] > 0
+    assert st["career_net"] == sum(r[0] for r in c.execute("SELECT net FROM trainer_hands WHERE COALESCE(practice,0)=0"))
+    client.post("/api/grind/reset")
+    st = client.get("/api/trainer/state").get_json()
+    assert (st["career_hands"], st["career_net"], st["career_bb"]) == (0, 0, 0.0)
+    assert grind.summary(c)["total_hands"] == 0

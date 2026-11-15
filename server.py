@@ -304,8 +304,12 @@ def trainer_save(t=None):
 
 def casino_info(t):
     g = grind_table()
-    return {"mode": casino_mode(), "locks": locks(t), "grind_account": g.bankroll + g.hero_stack, "online_clock_s": {"preflop": ONLINE_PREFLOP_S, "postflop": ONLINE_POSTFLOP_S},
-            "free_timer_levels": FREE_TIMER_LEVELS}
+    out = {"mode": casino_mode(), "locks": locks(t), "grind_account": g.bankroll + g.hero_stack, "online_clock_s": {"preflop": ONLINE_PREFLOP_S, "postflop": ONLINE_POSTFLOP_S},
+           "free_timer_levels": FREE_TIMER_LEVELS}
+    if casino_mode() == "grind":
+        c = grind.career(db())                               # hands and money since the Grinding reset: the same numbers as the Grinding page
+        out.update(career_hands=c["hands"], career_net=c["net"], career_bb=c["net_bb"])
+    return out
 
 
 def trainer_reply(t, **extra):

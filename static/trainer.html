@@ -175,7 +175,7 @@ body.guest header a.nav{display:none}
     <div class="card" id="mpCard" style="display:none"></div>
     <div class="card" id="scoreCard" style="display:none"></div>
     <div class="card">
-      <h2>Your session</h2>
+      <h2 id="statsHdr">Your session</h2>
       <div class="stats" id="stats"></div>
       <div class="dim" id="acctStat" style="text-align:center;margin-top:8px;font-size:13px"></div>
     </div>
@@ -499,12 +499,19 @@ function renderLog(){
 }
 function renderStats(){
   if(!S)return;
-  const box=(n,label,bb)=>`<div><b class="${n>0?'pos':n<0?'neg':''}">${n>0?'+':n<0?'-':''}${fmt(Math.abs(n))}</b><span>${label}${bb?' '+(n/S.bb).toFixed(1)+'bb':''}</span></div>`;
-  const hasSession=S.session_net!==undefined&&!S.mp;       // the shared table has just one total per sitting
-  $('stats').style.gridTemplateColumns=`repeat(${hasSession?4:3},1fr)`;
-  $('stats').innerHTML=`<div><b>${S.hand_no}</b><span>Hands</span></div>`
-    +(hasSession?box(S.session_net,'Session',true)+box(S.hero_net,'Career total',true):box(S.hero_net,'Session',true))
-    +`<div><b>${fmt(S.hero_stack)}</b><span>Your stack</span></div>`;
+  const sgn=n=>n>0?'+':n<0?'-':'', cls=n=>n>0?'pos':n<0?'neg':'';
+  const money_=(n,label)=>`<div><b class="${cls(n)}">${sgn(n)}${fmt(Math.abs(n))}</b><span>${label}</span></div>`;
+  const num=(v,label)=>`<div><b>${v}</b><span>${label}</span></div>`;
+  const career=S.career_hands!==undefined;       // Grinding shows only the career: hands and money since the Grinding reset (the same as the Grinding page)
+  if(career){
+    $('statsHdr').textContent='Your career';
+    $('stats').innerHTML=num(S.career_hands.toLocaleString(),'Career hands')+money_(S.career_net,`Career total ${S.career_bb}bb`)+num(fmt(S.hero_stack),'Your stack');
+  }else{                                          // Practice, tournaments and the shared table: this sitting
+    const hands=S.session_hands!==undefined&&!S.mp?S.session_hands:S.hand_no, net=S.session_net!==undefined&&!S.mp?S.session_net:S.hero_net;
+    $('statsHdr').textContent='Your session';
+    $('stats').innerHTML=num(hands,'Hands')+money_(net,`Session ${(net/S.bb).toFixed(1)}bb`)+num(fmt(S.hero_stack),'Your stack');
+  }
+  $('stats').style.gridTemplateColumns='repeat(3,1fr)';
   if(S.mp){$('acctStat').textContent=S.role==='host'?(S.guest?`${S.guest} is at your table`:'Waiting for your friend'):`Playing at ${S.host_name}'s table`}
   else $('acctStat').innerHTML=S.chip_mode?`Account <b>${money(S.grind_account)}</b> (shared with cash)`:`Account <b>${fmt(S.account)}</b> &middot; ${fmt(S.bankroll)} off the table &middot; ${S.account_buy_ins} buy-ins`;
   const st=CFG.stakes.find(x=>x.key===S.stake);
